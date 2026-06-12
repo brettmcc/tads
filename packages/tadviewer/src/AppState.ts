@@ -4,6 +4,7 @@ import * as reltab from "reltab";
 import { DataSourcePath, DataSourceId } from "reltab";
 import { Timer } from "./Timer";
 import { Activity } from "./components/defs";
+import { CommandResultEntry } from "./commandState";
 /**
  * Immutable representation of application state
  *
@@ -41,6 +42,11 @@ export interface AppStateProps {
   appLoadingTimer: Timer;
   activity: Activity;
   showRecordCount: boolean;
+
+  // Stata-style command bar state (session-only, not persisted):
+  commandResults: Immutable.List<CommandResultEntry>;
+  resultsPaneOpen: boolean;
+  commandRunning: boolean;
 }
 
 const defaultAppStateProps: AppStateProps = {
@@ -59,6 +65,9 @@ const defaultAppStateProps: AppStateProps = {
   appLoadingTimer: new Timer(),
   activity: "None",
   showRecordCount: true,
+  commandResults: Immutable.List<CommandResultEntry>(),
+  resultsPaneOpen: false,
+  commandRunning: false,
 };
 
 export class AppState extends Immutable.Record(defaultAppStateProps) {
@@ -80,4 +89,7 @@ export class AppState extends Immutable.Record(defaultAppStateProps) {
   public readonly appLoadingTimer!: Timer;
   public readonly activity!: Activity;
   public readonly showRecordCount!: boolean;
+  public readonly commandResults!: Immutable.List<CommandResultEntry>;
+  public readonly resultsPaneOpen!: boolean;
+  public readonly commandRunning!: boolean;
 }

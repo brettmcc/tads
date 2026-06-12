@@ -20,7 +20,10 @@ import {
 import { GridPane, OpenURLFn } from "./GridPane";
 import { Footer } from "./Footer";
 import { LoadingModal } from "./LoadingModal";
+import { CommandBar } from "./CommandBar";
+import { ResultsPane } from "./ResultsPane";
 import * as actions from "../actions";
+import * as commandActions from "../commandActions";
 import {
   AppState,
   ExportFormat,
@@ -426,6 +429,18 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
     }
   }, [dsPath]);
 
+  // Ctrl+` (backquote) toggles the command results pane
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "`") {
+        e.preventDefault();
+        commandActions.toggleResultsPane(stateRef);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [stateRef]);
+
   let centerPane: JSX.Element | null;
 
   // We should probably make pivot sidebar deal better with an empty table, but...
@@ -464,6 +479,8 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
           onCellClick={onCellClick}
           onSelectionChange={onSelectionChange}
         />
+        <ResultsPane appState={appState} stateRef={stateRef} />
+        <CommandBar appState={appState} stateRef={stateRef} />
         <Footer
           appState={appState}
           stateRef={stateRef}

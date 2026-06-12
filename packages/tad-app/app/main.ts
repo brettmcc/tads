@@ -301,6 +301,14 @@ const initApp =
   async (instanceArgv: string[], workingDirectory: string | null) => {
     try {
       let argv = instanceArgv.slice(1);
+      // drop Node/Chromium debugging flags injected by debuggers and
+      // UI automation (e.g. Playwright) that our CLI parser doesn't know:
+      argv = argv.filter(
+        (arg) =>
+          !arg.startsWith("--inspect") &&
+          !arg.startsWith("--remote-debugging-port") &&
+          !arg.startsWith("--remote-allow-origins")
+      );
       let awaitingOpenEvent = false;
       // macOS OpenWith peculiarity
       // Using context menu on Windows results in invoking .exe with
