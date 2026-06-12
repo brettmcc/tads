@@ -1,4 +1,15 @@
-# Tad
+# Tad (Stata-command fork)
+
+> **This fork** extends Tad with a Stata-like command bar and an
+> append-only results pane: `bro[wse]`, `sum[marize]`, `tab[ulate]`,
+> and `codebook`, each with an optional `if` filter expression, with
+> the generated SQL visible for every command. See
+> [doc/stata-commands.md](doc/stata-commands.md) for the command
+> language and [Building this fork](#building-this-fork-windows) below.
+> The DuckDB backend has been migrated from the legacy native `duckdb`
+> module to [`@duckdb/node-api`](https://www.npmjs.com/package/@duckdb/node-api)
+> (prebuilt NAPI bindings — no Visual Studio / node-gyp build step), and
+> the monorepo now uses npm workspaces instead of Lerna bootstrap.
 
 This repository contains the source code for [Tad](https://www.tadviewer.com), an application for viewing and analyzing tabular
 data sets.
@@ -69,6 +80,34 @@ point for further investigation and development.
 - [**reltab-aws-athena**](./packages/reltab-aws-athena/) - reltab driver for AWS Athena
 - [**reltab-bigquery**](./packages/reltab-bigquery/) - reltab driver for Google BigQuery
 - [**reltab-snowflake**](./packages/reltab-snowflake/) - reltab driver for Snowflake
+
+# Building this fork (Windows)
+
+Requirements: **Node >= 24** (see `.nvmrc`) and npm >= 10. No Visual
+Studio or Python toolchain is needed: every native dependency ships
+prebuilt binaries.
+
+```sh
+npm install        # installs all workspace packages
+npm run build      # builds reltab, aggtree, drivers, tadviewer, tad-app
+npm start          # launches the desktop app (or: npm start -- file.parquet)
+npm test           # reltab + reltab-duckdb + tadviewer test suites
+npm run pack       # packaged app in packages/tad-app/dist/win-unpacked
+npm run dist       # full distributable installer
+```
+
+End-to-end tests for the command bar (require a prior `npm run build`
+or `build-dev`):
+
+```sh
+npm run test:e2e -w packages/tad-app          # dev-build Electron e2e
+node packages/tad-app/tools/packagedSmoke.js  # packaged-app smoke test
+```
+
+The default workspace set deliberately excludes `reltab-sqlite` (its
+legacy `sqlite3` dependency needs an old native toolchain), the
+athena/snowflake drivers, and the web app/server; their sources remain
+in `packages/` for reference.
 
 # Building Tad from Source
 
