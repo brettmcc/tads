@@ -1,4 +1,3 @@
-import * as duckdb from "duckdb-async";
 import * as _ from "lodash";
 import * as reltab from "reltab";
 import {
@@ -36,7 +35,7 @@ test("t0 - trivial query generation", () => {
   `);
 });
 
-const importCsv = async (db: duckdb.Database, path: string) => {
+const importCsv = async (db: reltabDuckDB.DuckDBDatabase, path: string) => {
   await reltabDuckDB.nativeCSVImport(db, path);
 };
 

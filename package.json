@@ -1,5 +1,5 @@
 {
-  "name": "tad",
+  "name": "tad-monorepo",
   "version": "0.14.0",
   "private": true,
   "description": "npm-workspaces monorepo for Tabular data viewer libraries and apps",
@@ -27,11 +27,11 @@
     "typescript": "^4.8.3"
   },
   "scripts": {
-    "build": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-bigquery -w reltab-fs && npm run build-prod -w tadviewer && npm run build-prod -w tad-app",
-    "build-dev": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-bigquery -w reltab-fs && npm run build-dev -w tadviewer && npm run build-dev -w tad-app",
+    "build": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-bigquery -w reltab-fs && npm run build-prod -w tadviewer && npm run build-prod -w packages/tad-app",
+    "build-dev": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-bigquery -w reltab-fs && npm run build-dev -w tadviewer && npm run build-dev -w packages/tad-app",
     "test": "npm run test --if-present -w reltab -w reltab-duckdb -w tadviewer",
-    "start": "npm run start -w tad-app",
-    "dist": "npm run dist -w tad-app",
-    "pack": "npm run pack -w tad-app"
+    "start": "npm run start -w packages/tad-app",
+    "dist": "npm run dist -w packages/tad-app",
+    "pack": "npm run pack -w packages/tad-app"
   }
 }

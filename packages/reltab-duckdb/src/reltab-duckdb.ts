@@ -1,4 +1,3 @@
-import { Connection, Database } from "duckdb-async";
 import * as log from "loglevel";
 import {
   colIsNumeric,
@@ -21,9 +20,24 @@ import {
   SQLDialect,
   TextSummaryStats,
 } from "reltab"; // eslint-disable-line
+import {
+  closeConnection,
+  DuckDBConnection,
+  DuckDBDatabase,
+  execStatements,
+  queryRows,
+} from "./duckdbAdapter";
 import { initS3 } from "./s3utils";
 
 export * from "./csvimport";
+export {
+  DuckDBDatabase,
+  DuckDBConnection,
+  convertDuckDBValue,
+  execStatements,
+  queryRows,
+  closeConnection,
+} from "./duckdbAdapter";
 
 const columnTypes = DuckDBDialect.columnTypes;
 
@@ -39,19 +53,19 @@ const typeLookup = (tnm: string): ColumnType => {
   return ret;
 };
 
-/* A little ConnectionPool class because it turns out node-duckdb
- * doesn't allow concurrent queries on a connection.
+/* A little ConnectionPool class because DuckDb doesn't
+ * allow concurrent queries on a connection.
  */
 class ConnectionPool {
-  db: Database;
-  private pool: Connection[];
+  db: DuckDBDatabase;
+  private pool: DuckDBConnection[];
 
-  constructor(db: Database) {
+  constructor(db: DuckDBDatabase) {
     this.db = db;
     this.pool = [];
   }
 
-  async take(): Promise<Connection> {
+  async take(): Promise<DuckDBConnection> {
     if (this.pool.length > 0) {
       return this.pool.pop()!;
     } else {
@@ -61,7 +75,7 @@ class ConnectionPool {
     }
   }
 
-  giveBack(conn: Connection) {
+  giveBack(conn: DuckDBConnection) {
     this.pool.push(conn);
   }
 }
@@ -149,12 +163,16 @@ export function columnStatsFromSummarize(
       ])
     ) {
       // numeric type!
-      // annoyingly, DuckDb summarize stats returned as a (nullable!) varchar:
-      const minVal = Number.parseFloat(row.min as string);
-      const maxVal = Number.parseFloat(row.max as string);
-      const approxUnique = Number.parseInt(row.approx_unique as string);
-      const count = Number.parseInt(row.count as string);
-      const pctNull = parsePercentage(row.null_percentage as string);
+      // DuckDb summarize stats may come back as strings or numbers depending
+      // on the client; normalize via String() before parsing:
+      const minVal = Number.parseFloat(String(row.min));
+      const maxVal = Number.parseFloat(String(row.max));
+      const approxUnique = Number.parseInt(String(row.approx_unique));
+      const count = Number.parseInt(String(row.count));
+      const pctNull =
+        typeof row.null_percentage === "number"
+          ? (row.null_percentage as number) / 100.0
+          : parsePercentage(row.null_percentage as string);
       const columnStats: NumericSummaryStats = {
         statsType: "numeric",
         min: minVal,
@@ -174,10 +192,10 @@ export class DuckDBDriver implements DbDriver {
   readonly sourceId: DataSourceId;
   readonly dialect: SQLDialect = DuckDBDialect;
   dbfile: string;
-  db: Database;
+  db: DuckDBDatabase;
   connPool: ConnectionPool;
 
-  constructor(dbfile: string, db: Database, dbConn: Connection) {
+  constructor(dbfile: string, db: DuckDBDatabase) {
     this.dbfile = dbfile;
     this.displayName = dbfile;
     this.sourceId = { providerName: "duckdb", resourceId: dbfile };
@@ -187,10 +205,10 @@ export class DuckDBDriver implements DbDriver {
 
   async runSqlQuery(query: string): Promise<Row[]> {
     const conn = await this.connPool.take();
-    let ret: any;
+    let ret: Row[];
     try {
       log.info("runSqlQuery:\n", query);
-      ret = await conn.all(query);
+      ret = await queryRows(conn, query);
     } finally {
       this.connPool.giveBack(conn);
     }
@@ -263,12 +281,15 @@ export class DuckDBDriver implements DbDriver {
   }
 }
 
-const loadExtensions = async (db: Database): Promise<void> => {
+const loadExtensions = async (db: DuckDBDatabase): Promise<void> => {
+  const conn = await db.connect();
   try {
-    const ret = await db.exec(`INSTALL 'httpfs'; LOAD 'httpfs'`);
+    await execStatements(conn, `INSTALL 'httpfs'; LOAD 'httpfs'`);
   } catch (err) {
     log.error("caught exception loading extensions: ", err);
     log.error("(ignoring unloadable extensions...)");
+  } finally {
+    closeConnection(conn);
   }
 };
 
@@ -276,12 +297,9 @@ const duckdbDataSourceProvider: DataSourceProvider = {
   providerName: "duckdb",
   connect: async (resourceId: any): Promise<DataSourceConnection> => {
     const dbfile = resourceId as string;
-    const db = await Database.create(dbfile);
+    const db = await DuckDBDatabase.open(dbfile);
     await loadExtensions(db);
-    // turn on fast parallel CSV loading:
-    // await db.exec("SET experimental_parallel_csv=true;");
-    const dbConn = await db.connect();
-    const driver = new DuckDBDriver(dbfile, db, dbConn);
+    const driver = new DuckDBDriver(dbfile, db);
     const dsConn = new DbDataSource(driver);
     return dsConn;
   },

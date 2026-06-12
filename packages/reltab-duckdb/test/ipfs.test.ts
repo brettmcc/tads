@@ -1,4 +1,3 @@
-import * as duckdb from "duckdb-async";
 import * as reltab from "reltab";
 import * as reltabDuckDB from "../src/reltab-duckdb";
 import * as tp from "typed-promisify";
@@ -32,7 +31,7 @@ beforeAll(async (): Promise<DataSourceConnection> => {
 });
 
 const importParquet = async (
-  db: duckdb.Database,
+  db: reltabDuckDB.DuckDBDatabase,
   path: string
 ): Promise<string> => {
   const tableName = await reltabDuckDB.nativeParquetImport(db, path);

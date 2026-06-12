@@ -91,6 +91,8 @@
     "appId": "com.antonycourtney.tad",
     "asarUnpack": [
       "**/*.node",
+      "**/*.dll",
+      "**/@duckdb/**",
       "**/*reltab*"
     ],
     "afterPack": "./tools/afterPack.js",

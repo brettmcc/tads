@@ -1,4 +1,3 @@
-import * as duckdb from "duckdb-async";
 import * as _ from "lodash";
 import * as reltab from "reltab";
 import {

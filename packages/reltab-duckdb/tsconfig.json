@@ -4,9 +4,10 @@
     "declaration": true,
     "module": "CommonJS",
     "sourceMap": true,
-    "target": "ES2015",
+    "target": "ES2020",
     "strict": true,
-    "lib": ["es6", "es2017", "dom"]
+    "esModuleInterop": true,
+    "lib": ["es2020", "dom"]
   },
   "include": ["./src/*", "./test/*.ts"]
 }

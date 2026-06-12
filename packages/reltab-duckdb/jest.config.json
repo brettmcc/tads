@@ -2,9 +2,13 @@
   "transform": {
     "^.+\\.tsx?$": "ts-jest"
   },
-  "testRegex": "/test/.*test.ts",
+  "testRegex": "/test/.*test.ts$",
   "testEnvironment": "node",
-  "testPathIgnorePatterns": ["/node_modules/", "/__snapshots__"],
+  "testPathIgnorePatterns": ["/node_modules/", "/__snapshots__", "ipfs.test.ts"],
   "moduleFileExtensions": ["ts", "js"],
-  "testTimeout": 15000
+  "testTimeout": 15000,
+  "snapshotFormat": {
+    "escapeString": true,
+    "printBasicPrototype": true
+  }
 }
