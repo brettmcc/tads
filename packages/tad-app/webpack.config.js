@@ -58,18 +58,6 @@ function config(nodeEnv) {
                 name: "[hash].[ext]",
               },
             },
-            {
-              loader: "image-webpack-loader",
-              options: {
-                bypassOnDebug: true,
-                optipng: {
-                  optimizationLevel: 7,
-                },
-                gifsicle: {
-                  interlaced: false,
-                },
-              },
-            },
           ],
         },
         {
