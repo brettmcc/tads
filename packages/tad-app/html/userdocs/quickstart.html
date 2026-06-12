@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-    <title>Tad Quick Start</title>
+    <title>Tads Quick Start</title>
     <!-- Bootstrap -->
     <link href="css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -18,10 +18,10 @@
     <main>
       <div class="container">
         <h1>Quick Start</h1>
-        <p class="lead">Welcome to Tad!</p>
-        <p>If you are reading this message, you have successfully installed the Tad desktop app!<p>
-        <h3>What Tad Is</h3>
-        The Tad desktop app lets you quickly explore tabular data files in several common file formats, including:
+        <p class="lead">Welcome to Tads!</p>
+        <p>If you are reading this message, you have successfully installed the Tads desktop app!<p>
+        <h3>What Tads Is</h3>
+        The Tads desktop app lets you quickly explore tabular data files in several common file formats, including:
         <br><br>
         <dl class="row">
         <dt class="col-sm-2"><code>.csv</code></dt>
@@ -35,47 +35,47 @@
         </dl>
 
         <P>
-          The primary feature that Tad provides for exploring and analyzing files is a <a href="https://en.wikipedia.org/wiki/Pivot_table"
+          The primary feature that Tads provides for exploring and analyzing files is a <a href="https://en.wikipedia.org/wiki/Pivot_table"
           onclick='tadOpenExternal(event,"https://en.wikipedia.org/wiki/Pivot_table")'>pivot table</a>.
-          A Tad pivot table transforms a flat table of data into a hierarchical <i>tree table</i> by
+          A Tads pivot table transforms a flat table of data into a hierarchical <i>tree table</i> by
           grouping together rows that have the same value for some selected columns (the pivot columns),
           and calculating aggregate values (like sum, min or max) for the other columns in each group.
-          Tad also supports multi-column sorts and compound filters on column values.
+          Tads also supports multi-column sorts and compound filters on column values.
         </P>
-        <h3>Launching Tad</h3>
-        <p>There are three ways to launch Tad:
+        <h3>Launching Tads</h3>
+        <p>There are three ways to launch Tads:
         <ol>
           <li>Application Icon
-          <p>You can double click on the Tad application icon to open Tad.  Use <strong>File...Open</strong> and the standard file open dialog to open a tabular data file in any
+          <p>You can double click on the Tads application icon to open Tads.  Use <strong>File...Open</strong> and the standard file open dialog to open a tabular data file in any
           of the supported file formats.
           <li>Context Menu or Drag and Drop</li>
-          <p>The installation process registers Tad as a viewer for the supported file format extensions. On any <code>.csv</code> or <code>.parquet</code>file in the Finder (macOS) or Explorer (Windows), use <strong>Open With...</strong> and select <strong>Tad</strong> to open the file in Tad.
+          <p>The installation process registers Tads as a viewer for the supported file format extensions. On any <code>.csv</code> or <code>.parquet</code>file in the Finder (macOS) or Explorer (Windows), use <strong>Open With...</strong> and select <strong>Tads</strong> to open the file in Tads.
           <li>From the Command Line
           <div id="cmdLineSetup">
           </div>
           <P>
-          Once Tad is installed and available on your PATH, simply type:
+          Once Tads is installed and available on your PATH, simply type:
 <pre>
 $ tad somefile.csv
 </pre>
-          to launch Tad to explore the file. You can also open <code>.tad</code> files (previously saved Tad view configurations) and all the
+          to launch Tads to explore the file. You can also open <code>.tad</code> files (previously saved Tads view configurations) and all the
           other supported file types via the command line.
         </ol>
         <h3>Basic Usage</h3>
         <p>
-        You can explore the basics of Tad by opening this example CSV file (from the <a href="https://www.kaggle.com/carolzhangdc/imdb-5000-movie-dataset"
+        You can explore the basics of Tads by opening this example CSV file (from the <a href="https://www.kaggle.com/carolzhangdc/imdb-5000-movie-dataset"
           onclick='tadOpenExternal(event,"https://www.kaggle.com/carolzhangdc/imdb-5000-movie-dataset")'>IMDB 5000 Movie Dataset</a> on Kaggle)
-        included in the Tad distribution:
+        included in the Tads distribution:
         <p>
         <button class="btn btn-primary btn-lg"
           onclick='tadOpenExample()'>
         Open movie_metadata.csv
         </button>
         <p>
-        When you open a file in Tad, Tad automatically imports the data into an internal in-memory DuckDb database and
+        When you open a file in Tads, Tads automatically imports the data into an internal in-memory DuckDb database and
         displays the tabular data in a grid. 
-        You can see the Tad pivot table controls by clicking the pivot icon
-        on the left of the Tad window:
+        You can see the Tads pivot table controls by clicking the pivot icon
+        on the left of the Tads window:
         <P>
         <img src="images/tad-quickstart-1.png"></img>
         <P>
@@ -83,7 +83,7 @@ $ tad somefile.csv
         <P>
         <img src="images/tad-quickstart-2.png"></img>
 <!--        <P>
-        The primary feature that Tad provides for exploring and analyzing files is a <emph>pivot table</emph>.
+        The primary feature that Tads provides for exploring and analyzing files is a <emph>pivot table</emph>.
         Briefly, a pivot table is a transformation of a table into a hiearchical <emph>tree table</emph> by grouping all rows in the source table that have the same value for some columns (the pivot columns).
         Multiple pivot columns result in a nested hierarchical structure, with each level of the hierarchy corresponding to one pivot column. Values of cells for non-pivoted columns at higher levels of the pivot table are determined by applying an <emph>aggregate function</emph> to all leaf rows underneath that row.
 -->
@@ -99,7 +99,7 @@ $ tad somefile.csv
         Additional controls for setting the order of columns, pivots and the sort key, and controlling aggregation and formatting rules are available under <strong>Additional Properties</strong> at the bottom of the side bar.
         <h4>Filtering</h4>
         <P>
-        Tad provides facilities for constructing a <emph>filter</emph> to select a subset of data. A filter consists of a collection of predicates that compare a value in that row (identified by column name) with a constant.
+        Tads provides facilities for constructing a <emph>filter</emph> to select a subset of data. A filter consists of a collection of predicates that compare a value in that row (identified by column name) with a constant.
         <P>
         Activate the filter pane by clicking the <strong>Filter</strong> link at the bottom of the window:
         <P>
@@ -117,7 +117,7 @@ $ tad somefile.csv
         <img src="images/tad-quickstart-filter-3.png"></img>
         <P>
         <h4>Combining Operations</h4>
-        The different operations in Tad can be combined to enable you to explore the underlying data set.
+        The different operations in Tads can be combined to enable you to explore the underlying data set.
         For example, here is a breakdown of top grossing movies by country and director:
         <P>
         <img src="images/tad-quickstart-3.png"></img>
@@ -146,7 +146,7 @@ $ tad somefile.csv
           or fomatting properties of a specific column.</li>
         </ul>
         <h4>Data Sources</h4>
-        Clicking the "databases" icon on the left of the Tad window will open the <i>Data Sources</i> sidebar. This will show
+        Clicking the "databases" icon on the left of the Tads window will open the <i>Data Sources</i> sidebar. This will show
         a hierarchical tree browser of data sources you have open. 
         If you open a directory or folder, you will see a tree view of the folder hierarchy and tabular data
         files supported formats, like this:
@@ -161,17 +161,17 @@ $ tad somefile.csv
         <h3>Data Sources</h3>
         <p>
         If you work in data science, chances are you have no shortage of CSV files of your own to explore.
-        In addition to the <a href='#' onclick='tadOpenExample()'>movie_metadata.csv</a> sample file included with Tad, a few of my favorite data sources on the Internet are:
+        In addition to the <a href='#' onclick='tadOpenExample()'>movie_metadata.csv</a> sample file included with Tads, a few of my favorite data sources on the Internet are:
         <ul>
-          <li><a href="https://www.kaggle.com/datasets" onclick='tadOpenExternal(event,"https://www.kaggle.com/datasets")'>Kaggle Datasets</a>. The <code>movie_metadata.csv</code> file used for many Tad examples is from the <a href="https://www.kaggle.com/deepmatrix/imdb-5000-movie-dataset"
+          <li><a href="https://www.kaggle.com/datasets" onclick='tadOpenExternal(event,"https://www.kaggle.com/datasets")'>Kaggle Datasets</a>. The <code>movie_metadata.csv</code> file used for many Tads examples is from the <a href="https://www.kaggle.com/deepmatrix/imdb-5000-movie-dataset"
             onclick='tadOpenExternal(event,"https://www.kaggle.com/deepmatrix/imdb-5000-movie-dataset")'>IMDB 5000 Movie Dataset</a> on Kaggle.
-          <li><a href="https://github.com/metmuseum/openaccess" onclick='tadOpenExternal(event,"https://github.com/metmuseum/openaccess")'>Met Museum Open Access Initiative</a>. The Metropolitan Museum of Art recently made 420,000 artworks available online for unrestricted use. The catalog file <code>MetObjects.csv</code> available at the linked github repository is a good example for testing Tad's ability to handle larger CSV files. It's a 228MB CSV file with 420,000 rows of data. It takes about 13 sec to load and display this file in Tad on my late 2013 MacBook Pro.
+          <li><a href="https://github.com/metmuseum/openaccess" onclick='tadOpenExternal(event,"https://github.com/metmuseum/openaccess")'>Met Museum Open Access Initiative</a>. The Metropolitan Museum of Art recently made 420,000 artworks available online for unrestricted use. The catalog file <code>MetObjects.csv</code> available at the linked github repository is a good example for testing Tads' ability to handle larger CSV files. It's a 228MB CSV file with 420,000 rows of data. It takes about 13 sec to load and display this file in Tads on my late 2013 MacBook Pro.
           <li>The <a href="https://github.com/fivethirtyeight/data" onclick='tadOpenExternal(event,"https://github.com/fivethirtyeight/data")'>FiveThirtyEight github repository</a> has many CSV files providing data behind the stories and interactives on the FiveThirtyEight web site.
         </ul>
 -->
         <h3>Going Further (Developers and Data Hackers)</h3>
         <P>
-        If for some reason you want to see the gnarly details of the SQL queries that Tad is constructing and executing, you can use the <code>-f</code> option on the command line to keep Tad in the foreground and <code>--show-queries</code> to get Tad to print the generated SQL queries like so:
+        If for some reason you want to see the gnarly details of the SQL queries that Tads is constructing and executing, you can use the <code>-f</code> option on the command line to keep Tads in the foreground and <code>--show-queries</code> to get Tads to print the generated SQL queries like so:
 <pre>
 $ tad -f --show-queries somefile.csv
 </pre>
@@ -179,7 +179,7 @@ $ tad -f --show-queries somefile.csv
         <P>
         <h3>And Finally...</h3>
         <P>
-        Have fun! I hope you find Tad a useful utility for viewing and analyzing data. <a href="mailto:tad-feedback@tadviewer.com" onclick='tadOpenExternal(event,"mailto:tad-feedback@tadviewer.com")'>  Feedback welcome</a>.
+        Have fun! I hope you find Tads a useful utility for viewing and analyzing data. <a href="mailto:tad-feedback@tadviewer.com" onclick='tadOpenExternal(event,"mailto:tad-feedback@tadviewer.com")'>  Feedback welcome</a>.
         <P>
       </div>
     </main>
@@ -199,7 +199,7 @@ $ tad -f --show-queries somefile.csv
   function unixSetup(installCmd) {
     const title = 'macOS'
     const content=`
-    <P>To launch tad from the command line, you need to ensure the Tad launcher shell script is on your <code>PATH</code>. If you have administrative rights on your machine, run the following command to create a symbolic link to <code>tad.sh</code> in <code>/usr/local/bin</code>:
+    <P>To launch tad from the command line, you need to ensure the Tads launcher shell script is on your <code>PATH</code>. If you have administrative rights on your machine, run the following command to create a symbolic link to <code>tad.sh</code> in <code>/usr/local/bin</code>:
   <br>
   <br>
   <div class="input-group">

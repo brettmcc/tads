@@ -233,7 +233,7 @@ export const openDialog = async (
         extensions: ["tsv"],
       },
       {
-        name: "Tad Workspace files",
+        name: "Tads Workspace files",
         extensions: ["tad"],
       },
       { name: "SQLite files", extensions: ["sqlite"] },
@@ -325,10 +325,10 @@ export const saveAsDialog = async () => {
   }
   const fileContents = await getAppState(win);
   const saveFilename = dialog.showSaveDialogSync(win, {
-    title: "Save Tad Workspace",
+    title: "Save Tads Workspace",
     filters: [
       {
-        name: "Tad Workspace files",
+        name: "Tads Workspace files",
         extensions: ["tad"],
       },
     ],

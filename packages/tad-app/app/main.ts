@@ -146,7 +146,7 @@ const optionDefinitions = [
     typeLabel:
       "{underline file}.csv or {underline file}.tad or sqlite://{underline file}/{underline table}",
     description:
-      "CSV file(.csv with header row), Tad(.tad) file, Parquet file or sqlite file to view",
+      "CSV file(.csv with header row), Tads(.tad) file, Parquet file or sqlite file to view",
   },
   {
     name: "executed-from",
@@ -184,19 +184,19 @@ const optionDefinitions = [
 ];
 const usageInfo = [
   {
-    header: "Tad",
+    header: "Tads",
     content: "A viewer for tabular data.",
   },
   {
     header: "Synopsis",
     content: [
-      "$ tad [{italic options}] {underline file}.csv",
-      "$ tad [{italic options}] {underline file}.csv.gz",
-      "$ tad [{italic options}] {underline file}.duckdb",
-      "$ tad [{italic options}] {underline file}.parquet",
-      "$ tad [{italic options}] {underline file}.tad",
-      "$ tad [{italic options}] {underline file}.tsv",
-      "$ tad [{italic options}] {underline directory}",
+      "$ tads [{italic options}] {underline file}.csv",
+      "$ tads [{italic options}] {underline file}.csv.gz",
+      "$ tads [{italic options}] {underline file}.duckdb",
+      "$ tads [{italic options}] {underline file}.parquet",
+      "$ tads [{italic options}] {underline file}.tad",
+      "$ tads [{italic options}] {underline file}.tsv",
+      "$ tads [{italic options}] {underline directory}",
     ],
   },
   {
@@ -216,7 +216,7 @@ const showUsage = () => {
 };
 
 const reportFatalError = (msg: string) => {
-  dialog.showErrorBox("Error starting Tad", msg);
+  dialog.showErrorBox("Error starting Tads", msg);
   app.quit();
 };
 
@@ -494,7 +494,7 @@ const main = () => {
       }
     );
 
-    app.setName("Tad");
+    app.setName("Tads");
     initApp(firstInstance)(process.argv, null);
   }
 };

@@ -19,7 +19,7 @@ autoUpdater.on("update-available", () => {
   const buttonIndex = dialog.showMessageBoxSync({
     type: "info",
     title: "Found Updates",
-    message: "A new release of Tad is available. Do you want to update now?",
+    message: "A new release of Tads is available. Do you want to update now?",
     buttons: ["Yes", "No"],
   });
   if (buttonIndex === 0) {

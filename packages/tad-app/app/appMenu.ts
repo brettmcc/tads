@@ -17,7 +17,7 @@ const separatorMenuItem: MenuItemConstructorOptions = {
 
 const aboutTadMenuItem = () => {
   return {
-    label: "About Tad",
+    label: "About Tads",
     role: "about",
   };
 };
@@ -32,7 +32,7 @@ const checkForUpdateMenuItem = () => {
 export const createMenu = () => {
   const fileSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: "New Tad Window",
+      label: "New Tads Window",
       accelerator: "CmdOrCtrl+N",
       click: (item: MenuItem, focusedWindow: BrowserWindow | undefined) => {
         appWindow.newWindow(focusedWindow);
@@ -180,7 +180,7 @@ export const createMenu = () => {
 
   if (isDarwin) {
     template.unshift({
-      label: "Tad",
+      label: "Tads",
       // ignored on Mac OS; comes from plist
       submenu: [
         aboutTadMenuItem(),

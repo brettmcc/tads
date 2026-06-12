@@ -20,7 +20,8 @@ let db: DuckDBDatabase;
 beforeAll(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "reltab-duckdb-test-"));
   dbFile = path.join(tmpDir, "adapter-test.duckdb");
-  db = await DuckDBDatabase.open(dbFile);
+  // writable override: this test builds its own fixture database
+  db = await DuckDBDatabase.open(dbFile, { readOnly: false });
 });
 
 afterAll(() => {
@@ -106,6 +107,37 @@ test("count(*) comes back as bigint", async () => {
     closeConnection(conn);
   }
   expect(rows[0].rowCount).toBe(2n);
+});
+
+test("on-disk databases open read-only by default", async () => {
+  // build a separate database writable, close it, then reopen with defaults
+  const roFile = path.join(tmpDir, "readonly-test.duckdb");
+  const setupDb = await DuckDBDatabase.open(roFile, { readOnly: false });
+  const setupConn = await setupDb.connect();
+  await execStatements(
+    setupConn,
+    "CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1)"
+  );
+  closeConnection(setupConn);
+  setupDb.close();
+
+  const roDb = await DuckDBDatabase.open(roFile);
+  const conn = await roDb.connect();
+  try {
+    // mutation is rejected at the database level
+    await expect(
+      execStatements(conn, "INSERT INTO t VALUES (2)")
+    ).rejects.toThrow(/read-only/i);
+    await expect(execStatements(conn, "DROP TABLE t")).rejects.toThrow(
+      /read-only/i
+    );
+    // reads still work
+    const rows = await queryRows(conn, "SELECT count(*) AS n FROM t");
+    expect(rows[0].n).toBe(1n);
+  } finally {
+    closeConnection(conn);
+    roDb.close();
+  }
 });
 
 test("concurrent queries on separate connections", async () => {

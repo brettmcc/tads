@@ -30,7 +30,7 @@ async function writeFixtureParquet(target) {
 }
 
 async function main() {
-  const exePath = path.resolve(__dirname, "..", "dist", "win-unpacked", "Tad.exe");
+  const exePath = path.resolve(__dirname, "..", "dist", "win-unpacked", "Tads.exe");
   if (!fs.existsSync(exePath)) {
     throw new Error(`packaged app not found at ${exePath}; run electron-builder --dir first`);
   }

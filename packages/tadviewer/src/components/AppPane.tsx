@@ -387,7 +387,7 @@ async function setTitleFromDSPath(
   dsPath: DataSourcePath
 ) {
   const node = await resolvePath(rtc, dsPath);
-  const title = "Tad - " + node.displayName;
+  const title = "Tads - " + node.displayName;
   document.title = title;
 }
 

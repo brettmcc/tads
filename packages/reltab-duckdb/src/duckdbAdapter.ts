@@ -111,8 +111,22 @@ export class DuckDBDatabase {
     this.instance = instance;
   }
 
-  static async open(dbfile: string): Promise<DuckDBDatabase> {
-    const instance = await DuckDBInstance.create(dbfile);
+  /**
+   * Open a DuckDB database. By default, on-disk database files are
+   * opened with access_mode READ_ONLY so the app can never modify a
+   * user's data file; the in-memory instance used for CSV/Parquet
+   * imports remains writable. Pass { readOnly: false } to override
+   * (used by tests that build fixtures).
+   */
+  static async open(
+    dbfile: string,
+    opts?: { readOnly?: boolean }
+  ): Promise<DuckDBDatabase> {
+    const readOnly = opts?.readOnly ?? dbfile !== ":memory:";
+    const options: Record<string, string> = readOnly
+      ? { access_mode: "READ_ONLY" }
+      : {};
+    const instance = await DuckDBInstance.create(dbfile, options);
     return new DuckDBDatabase(dbfile, instance);
   }
 
