@@ -157,6 +157,7 @@ const requestQueryView = async (
   viewParams: ViewParams,
   showRecordCount: boolean,
   prevQueryView: QueryView | null | undefined,
+  baseRowCountCache?: WeakMap<reltab.QueryExp, number>,
   onViewRowCount?: (
     query: reltab.QueryExp,
     type: "filtered" | "unfiltered" | "view"
@@ -188,9 +189,18 @@ const requestQueryView = async (
   );
   const treeQuery = await ptree.getSortedTreeQuery(viewParams.openPaths); // const t0 = performance.now()  // eslint-disable-line
 
-  onViewRowCount?.(baseQuery, "unfiltered");
-  const baseRowCount = await rt.rowCount(baseQuery);
-  onViewRowCountResolved?.(baseQuery, baseRowCount, "unfiltered");
+  // the base (unfiltered) row count is invariant for a given base query;
+  // cache it to avoid a full re-count scan on every view change
+  let baseRowCount: number;
+  const cachedBaseCount = baseRowCountCache?.get(baseQuery);
+  if (cachedBaseCount !== undefined) {
+    baseRowCount = cachedBaseCount;
+  } else {
+    onViewRowCount?.(baseQuery, "unfiltered");
+    baseRowCount = await rt.rowCount(baseQuery);
+    onViewRowCountResolved?.(baseQuery, baseRowCount, "unfiltered");
+    baseRowCountCache?.set(baseQuery, baseRowCount);
+  }
   const filterRowCount = await fastFilterRowCount(
     rt,
     baseRowCount,
@@ -307,6 +317,9 @@ export class PivotRequester {
   pendingLimit: number;
   errorCallback?: (e: Error) => void;
   setLoadingCallback: (loading: boolean) => void;
+  /** cache of unfiltered row counts, keyed by base query identity */
+  private baseRowCountCache: WeakMap<reltab.QueryExp, number> =
+    new WeakMap();
 
   constructor(
     stateRef: oneref.StateRef<AppState>,
@@ -433,6 +446,7 @@ export class PivotRequester {
         this.pendingViewParams,
         appState.showRecordCount,
         queryView,
+        this.baseRowCountCache,
         this.onViewRowCount,
         this.onViewRowCountResolved
       );

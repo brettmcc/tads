@@ -44,15 +44,13 @@ function mkSchema(): Schema {
 
 const schema = mkSchema();
 
-/** canned summarize result for `sum a` */
-const sumRows: Row[] = [
-  { __ord: 0, variable: "a", n: 3, mean: 2, sd: 1, min: 1, max: 3 },
-];
+/** canned summarize result for `sum a` (single wide aggregate row) */
+const sumRows: Row[] = [{ n_0: 3, mean_0: 2, sd_0: 1, min_0: 1, max_0: 3 }];
 
 function mkFakeDbc(): DataSourceConnection {
   const fake: Partial<DataSourceConnection> = {
     runReadOnlySql: async (sql: string): Promise<ReadOnlySqlResult> => {
-      if (sql.indexOf("__ord") >= 0) {
+      if (sql.indexOf("stddev_samp") >= 0) {
         return { schema, rows: sumRows };
       }
       return { schema, rows: [] };

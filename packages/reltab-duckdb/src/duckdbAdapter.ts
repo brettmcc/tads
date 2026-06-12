@@ -154,6 +154,37 @@ export async function queryRows(
   });
 }
 
+export interface RowsWithColumnInfo {
+  rows: Row[];
+  columnNames: string[];
+  /** uppercase SQL type names, e.g. INTEGER, VARCHAR, DECIMAL(8,2) */
+  columnTypeNames: string[];
+}
+
+/**
+ * Execute a single SQL query and return its rows plus the result's
+ * column names and SQL type names, avoiding a separate describe query.
+ */
+export async function queryRowsWithColumnInfo(
+  conn: DuckDBConnection,
+  sql: string
+): Promise<RowsWithColumnInfo> {
+  const reader = await conn.runAndReadAll(sql);
+  const rowObjects = reader.getRowObjects();
+  const rows = rowObjects.map((rowObj) => {
+    const row: Row = {};
+    for (const [k, v] of Object.entries(rowObj)) {
+      row[k] = convertDuckDBValue(v);
+    }
+    return row;
+  });
+  const columnNames = reader.columnNames();
+  const columnTypeNames = reader
+    .columnTypes()
+    .map((t) => String(t).toUpperCase());
+  return { rows, columnNames, columnTypeNames };
+}
+
 /**
  * Close a connection obtained from DuckDBDatabase.connect().
  */

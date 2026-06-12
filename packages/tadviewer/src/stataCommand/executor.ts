@@ -110,13 +110,15 @@ async function runSummarize(
   ctx: CommandExecutionContext
 ): Promise<ResultBlock[]> {
   const res = await ctx.runReadOnlySql(plan.sql);
-  const rows = res.rows.map((row: Row): CellValue[] => [
-    asString(row.variable),
-    asNumber(row.n),
-    asNumber(row.mean),
-    asNumber(row.sd),
-    asNumber(row.min),
-    asNumber(row.max),
+  // one wide row of per-variable aggregates; reshape to a row per variable
+  const wide: Row = res.rows[0] ?? {};
+  const rows = plan.variables.map((variable, idx): CellValue[] => [
+    variable,
+    asNumber(wide[`n_${idx}`]),
+    asNumber(wide[`mean_${idx}`]),
+    asNumber(wide[`sd_${idx}`]),
+    asNumber(wide[`min_${idx}`]),
+    asNumber(wide[`max_${idx}`]),
   ]);
   return [
     {
@@ -143,6 +145,11 @@ async function runTabulate(
     (acc, r) => acc + ((r[1] as number | null) ?? 0),
     0
   );
+  const nGroups = asNumber(res.rows[0]?.n_groups) ?? rows.length;
+  const truncNote =
+    nGroups > rows.length
+      ? ` — showing first ${rows.length} of ${nGroups} distinct values`
+      : "";
   const blocks: ResultBlock[] = [
     {
       kind: "table",
@@ -150,7 +157,10 @@ async function runTabulate(
       align: ["left", "right", "right", "right"],
       rows,
     },
-    { kind: "text", text: `Total: ${total} (null values excluded)` },
+    {
+      kind: "text",
+      text: `Total: ${total} (null values excluded)${truncNote}`,
+    },
   ];
   return blocks;
 }
@@ -159,35 +169,42 @@ async function runCodebook(
   plan: CodebookPlan,
   ctx: CommandExecutionContext
 ): Promise<ResultBlock[]> {
-  const blocks: ResultBlock[] = [];
-  for (const varPlan of plan.variables) {
-    const statsRes = await ctx.runReadOnlySql(varPlan.statsSql);
-    const statsRow = statsRes.rows[0] ?? {};
-    let topValues: Array<{ value: string; freq: number }> | undefined;
-    if (varPlan.topValuesSql !== undefined) {
-      const topRes = await ctx.runReadOnlySql(varPlan.topValuesSql);
-      topValues = topRes.rows.map((row: Row) => ({
-        value: asString(row.value) ?? "",
-        freq: asNumber(row.freq) ?? 0,
-      }));
-    }
+  // all scalar stats arrive from a single scan; top-values queries (one
+  // per categorical variable) run concurrently on pooled connections
+  const statsPromise = ctx.runReadOnlySql(plan.statsSql);
+  const topValuePromises = plan.variables.map((varPlan) =>
+    varPlan.topValuesSql === undefined
+      ? Promise.resolve(null)
+      : ctx.runReadOnlySql(varPlan.topValuesSql)
+  );
+  const statsRes = await statsPromise;
+  const topResults = await Promise.all(topValuePromises);
+  const wide: Row = statsRes.rows[0] ?? {};
+
+  return plan.variables.map((varPlan, idx): ResultBlock => {
     const block: ResultBlock = {
       kind: "codebookVar",
       variable: varPlan.variable,
       sqlType: varPlan.sqlType,
-      n: asNumber(statsRow.n) ?? 0,
-      missing: asNumber(statsRow.missing) ?? 0,
-      distinct: asNumber(statsRow.distinct_count) ?? 0,
+      n: asNumber(wide[`n_${idx}`]) ?? 0,
+      missing: asNumber(wide[`missing_${idx}`]) ?? 0,
+      distinct: asNumber(wide[`distinct_${idx}`]) ?? 0,
     };
     if (varPlan.ordered) {
-      block.min = asString(statsRow.min_val);
-      block.max = asString(statsRow.max_val);
+      block.min = asString(wide[`min_${idx}`]);
+      block.max = asString(wide[`max_${idx}`]);
     } else {
-      block.topValues = topValues ?? [];
+      const topRes = topResults[idx];
+      block.topValues =
+        topRes === null
+          ? []
+          : topRes.rows.map((row: Row) => ({
+              value: asString(row.value) ?? "",
+              freq: asNumber(row.freq) ?? 0,
+            }));
     }
-    blocks.push(block);
-  }
-  return blocks;
+    return block;
+  });
 }
 
 /**
@@ -249,13 +266,12 @@ export async function executeCommand(
       }
       case "codebook": {
         const blocks = await runCodebook(plan, ctx);
-        const sql = plan.variables
-          .flatMap((v) =>
-            v.topValuesSql === undefined
-              ? [v.statsSql]
-              : [v.statsSql, v.topValuesSql]
-          )
-          .join(";\n\n");
+        const sql = [
+          plan.statsSql,
+          ...plan.variables
+            .filter((v) => v.topValuesSql !== undefined)
+            .map((v) => v.topValuesSql!),
+        ].join(";\n\n");
         return {
           status: "ok",
           kind: "codebook",

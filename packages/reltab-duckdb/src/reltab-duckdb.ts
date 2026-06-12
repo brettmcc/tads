@@ -26,6 +26,7 @@ import {
   DuckDBDatabase,
   execStatements,
   queryRows,
+  queryRowsWithColumnInfo,
 } from "./duckdbAdapter";
 import { initS3 } from "./s3utils";
 
@@ -36,6 +37,7 @@ export {
   convertDuckDBValue,
   execStatements,
   queryRows,
+  queryRowsWithColumnInfo,
   closeConnection,
 } from "./duckdbAdapter";
 
@@ -213,6 +215,32 @@ export class DuckDBDriver implements DbDriver {
       this.connPool.giveBack(conn);
     }
     return ret;
+  }
+
+  /**
+   * Run a query and derive the result Schema from the result metadata,
+   * avoiding the extra describe round trip.
+   */
+  async runSqlQueryWithSchema(
+    query: string
+  ): Promise<{ schema: Schema; rows: Row[] }> {
+    const conn = await this.connPool.take();
+    try {
+      log.info("runSqlQueryWithSchema:\n", query);
+      const { rows, columnNames, columnTypeNames } =
+        await queryRowsWithColumnInfo(conn, query);
+      const cmMap: ColumnMetaMap = {};
+      columnNames.forEach((colId, idx) => {
+        cmMap[colId] = {
+          displayName: colId,
+          columnType: columnTypeNames[idx],
+        };
+      });
+      const schema = new Schema(DuckDBDialect, columnNames, cmMap);
+      return { schema, rows };
+    } finally {
+      this.connPool.giveBack(conn);
+    }
   }
 
   async getDisplayName(): Promise<string> {

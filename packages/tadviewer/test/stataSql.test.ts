@@ -103,38 +103,33 @@ describe("filter expression SQL", () => {
 });
 
 describe("summarize SQL", () => {
-  test("numeric and non-numeric variables with filter", () => {
+  test("single scan: per-variable aggregate columns, one query", () => {
     const p = plan("sum a s if c > 2") as SummarizePlan;
     expect(p.sql).toBe(
       [
-        "SELECT 0 AS __ord,",
-        "       'a' AS variable,",
-        '       count("a") AS n,',
-        '       CAST(avg("a") AS DOUBLE) AS mean,',
-        '       CAST(stddev_samp("a") AS DOUBLE) AS sd,',
-        '       CAST(min("a") AS DOUBLE) AS min,',
-        '       CAST(max("a") AS DOUBLE) AS max',
+        'SELECT count("a") AS n_0,',
+        '       CAST(avg("a") AS DOUBLE) AS mean_0,',
+        '       CAST(stddev_samp("a") AS DOUBLE) AS sd_0,',
+        '       CAST(min("a") AS DOUBLE) AS min_0,',
+        '       CAST(max("a") AS DOUBLE) AS max_0,',
+        '       count("s") AS n_1,',
+        "       CAST(NULL AS DOUBLE) AS mean_1,",
+        "       CAST(NULL AS DOUBLE) AS sd_1,",
+        "       CAST(NULL AS DOUBLE) AS min_1,",
+        "       CAST(NULL AS DOUBLE) AS max_1",
         BASE_FROM,
         'WHERE ("c" > 2)',
-        "UNION ALL",
-        "SELECT 1 AS __ord,",
-        "       's' AS variable,",
-        '       count("s") AS n,',
-        "       CAST(NULL AS DOUBLE) AS mean,",
-        "       CAST(NULL AS DOUBLE) AS sd,",
-        "       CAST(NULL AS DOUBLE) AS min,",
-        "       CAST(NULL AS DOUBLE) AS max",
-        BASE_FROM,
-        'WHERE ("c" > 2)',
-        "ORDER BY __ord",
       ].join("\n")
     );
+    // exactly one scan of the base data, regardless of variable count
+    expect(p.sql.match(/FROM \(/g)!.length).toBe(1);
+    expect(p.sql).not.toContain("UNION ALL");
   });
 
-  test("variable name containing a quote is escaped in the label", () => {
+  test("quoted column names are quoted in aggregates", () => {
     const p = plan('sum `quote"name`') as SummarizePlan;
-    expect(p.sql).toContain(`'quote"name' AS variable`);
-    expect(p.sql).toContain(`count("quote""name") AS n`);
+    expect(p.sql).toContain(`count("quote""name") AS n_0`);
+    expect(p.variables).toEqual(['quote"name']);
   });
 });
 
@@ -146,11 +141,13 @@ describe("tabulate SQL", () => {
         'SELECT CAST("s" AS VARCHAR) AS value,',
         "       count(*) AS freq,",
         "       100.0 * count(*) / sum(count(*)) OVER () AS percent,",
-        '       100.0 * sum(count(*)) OVER (ORDER BY "s") / sum(count(*)) OVER () AS cum_percent',
+        '       100.0 * sum(count(*)) OVER (ORDER BY "s") / sum(count(*)) OVER () AS cum_percent,',
+        "       count(*) OVER () AS n_groups",
         BASE_FROM,
         'WHERE ("a" IS NOT NULL) AND "s" IS NOT NULL',
         'GROUP BY "s"',
         'ORDER BY "s"',
+        "LIMIT 1000",
       ].join("\n")
     );
   });
@@ -162,28 +159,35 @@ describe("tabulate SQL", () => {
 });
 
 describe("codebook SQL", () => {
-  test("ordered variable gets min/max; categorical gets top values", () => {
+  test("all stats in one scan; categorical gets top values", () => {
     const p = plan("codebook a s") as CodebookPlan;
     expect(p.variables.length).toBe(2);
+
+    expect(p.statsSql).toBe(
+      [
+        'SELECT count("a") AS n_0,',
+        '       count(*) - count("a") AS missing_0,',
+        '       count(DISTINCT "a") AS distinct_0,',
+        '       CAST(min("a") AS VARCHAR) AS min_0,',
+        '       CAST(max("a") AS VARCHAR) AS max_0,',
+        '       count("s") AS n_1,',
+        '       count(*) - count("s") AS missing_1,',
+        '       count(DISTINCT "s") AS distinct_1,',
+        "       CAST(NULL AS VARCHAR) AS min_1,",
+        "       CAST(NULL AS VARCHAR) AS max_1",
+        BASE_FROM,
+      ].join("\n")
+    );
+    // single scan for all per-variable stats
+    expect(p.statsSql.match(/FROM \(/g)!.length).toBe(1);
 
     const [aPlan, sPlan] = p.variables;
     expect(aPlan.ordered).toBe(true);
     expect(aPlan.sqlType).toBe("INTEGER");
-    expect(aPlan.statsSql).toBe(
-      [
-        'SELECT count("a") AS n,',
-        '       count(*) - count("a") AS missing,',
-        '       count(DISTINCT "a") AS distinct_count,',
-        '       CAST(min("a") AS VARCHAR) AS min_val,',
-        '       CAST(max("a") AS VARCHAR) AS max_val',
-        BASE_FROM,
-      ].join("\n")
-    );
     expect(aPlan.topValuesSql).toBeUndefined();
 
     expect(sPlan.ordered).toBe(false);
     expect(sPlan.sqlType).toBe("VARCHAR");
-    expect(sPlan.statsSql).toContain("CAST(NULL AS VARCHAR) AS min_val");
     expect(sPlan.topValuesSql).toBe(
       [
         'SELECT CAST("s" AS VARCHAR) AS value,',

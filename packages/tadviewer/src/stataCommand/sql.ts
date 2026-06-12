@@ -44,6 +44,14 @@ import { StataCommandError } from "./errors";
 
 export const TOP_VALUES_LIMIT = 10;
 
+/**
+ * Maximum number of distinct values a tabulate result will return.
+ * Percent and cumulative percent are computed over all groups before the
+ * limit is applied; the executor reports the total group count so the UI
+ * can indicate truncation.
+ */
+export const TAB_GROUP_LIMIT = 1000;
+
 export interface PlanContext {
   /** schema of the data columns of the current view (no synthetic columns) */
   schema: Schema;
@@ -62,6 +70,7 @@ export interface BrowsePlan {
 export interface SummarizePlan {
   kind: "summarize";
   variables: string[];
+  /** single wide aggregate query; one scan regardless of variable count */
   sql: string;
 }
 
@@ -76,12 +85,13 @@ export interface CodebookVarPlan {
   sqlType: string;
   /** ordered variables report min/max; others report top values */
   ordered: boolean;
-  statsSql: string;
   topValuesSql?: string;
 }
 
 export interface CodebookPlan {
   kind: "codebook";
+  /** one wide aggregate query covering every requested variable */
+  statsSql: string;
   variables: CodebookVarPlan[];
 }
 
@@ -322,46 +332,54 @@ function whereClause(
   return parts.length === 0 ? "" : `WHERE ${parts.join(" AND ")}`;
 }
 
+/**
+ * Summarize compiles to a single wide aggregate row computed in one scan
+ * (per-variable stat columns suffixed _0, _1, ...); the executor reshapes
+ * it into one output row per variable.
+ */
 function planSummarize(
   cmd: StataCommand & { kind: "summarize" },
   ctx: PlanContext
 ): SummarizePlan {
   const from = fromClause(ctx);
   const where = whereClause(cmd.filter, ctx);
-  const branches = cmd.variables.map((colId, idx) => {
+  const statCols: string[] = [];
+  cmd.variables.forEach((colId, idx) => {
     const q = ctx.dialect.quoteCol(colId);
     const ct = columnTypeOf(ctx, colId);
     const numeric = colIsNumeric(ct);
-    const stats = numeric
-      ? [
-          `count(${q}) AS n`,
-          `CAST(avg(${q}) AS DOUBLE) AS mean`,
-          `CAST(stddev_samp(${q}) AS DOUBLE) AS sd`,
-          `CAST(min(${q}) AS DOUBLE) AS min`,
-          `CAST(max(${q}) AS DOUBLE) AS max`,
-        ]
-      : [
-          `count(${q}) AS n`,
-          `CAST(NULL AS DOUBLE) AS mean`,
-          `CAST(NULL AS DOUBLE) AS sd`,
-          `CAST(NULL AS DOUBLE) AS min`,
-          `CAST(NULL AS DOUBLE) AS max`,
-        ];
-    const lines = [
-      `SELECT ${idx} AS __ord,`,
-      `       ${sqlStringLiteral(colId)} AS variable,`,
-      ...stats.map((s, i) =>
-        i === stats.length - 1 ? `       ${s}` : `       ${s},`
-      ),
-      from,
-    ];
-    if (where !== "") {
-      lines.push(where);
+    statCols.push(`count(${q}) AS n_${idx}`);
+    if (numeric) {
+      statCols.push(
+        `CAST(avg(${q}) AS DOUBLE) AS mean_${idx}`,
+        `CAST(stddev_samp(${q}) AS DOUBLE) AS sd_${idx}`,
+        `CAST(min(${q}) AS DOUBLE) AS min_${idx}`,
+        `CAST(max(${q}) AS DOUBLE) AS max_${idx}`
+      );
+    } else {
+      statCols.push(
+        `CAST(NULL AS DOUBLE) AS mean_${idx}`,
+        `CAST(NULL AS DOUBLE) AS sd_${idx}`,
+        `CAST(NULL AS DOUBLE) AS min_${idx}`,
+        `CAST(NULL AS DOUBLE) AS max_${idx}`
+      );
     }
-    return lines.join("\n");
   });
-  const sql = branches.join("\nUNION ALL\n") + "\nORDER BY __ord";
-  return { kind: "summarize", variables: cmd.variables, sql };
+  const lines = [
+    "SELECT " + statCols[0] + ",",
+    ...statCols
+      .slice(1)
+      .map((s, i) => `       ${s}${i === statCols.length - 2 ? "" : ","}`),
+    from,
+  ];
+  if (where !== "") {
+    lines.push(where);
+  }
+  return {
+    kind: "summarize",
+    variables: cmd.variables,
+    sql: lines.join("\n"),
+  };
 }
 
 function planTabulate(
@@ -375,44 +393,52 @@ function planTabulate(
     `SELECT CAST(${q} AS VARCHAR) AS value,`,
     `       count(*) AS freq,`,
     `       100.0 * count(*) / sum(count(*)) OVER () AS percent,`,
-    `       100.0 * sum(count(*)) OVER (ORDER BY ${q}) / sum(count(*)) OVER () AS cum_percent`,
+    `       100.0 * sum(count(*)) OVER (ORDER BY ${q}) / sum(count(*)) OVER () AS cum_percent,`,
+    `       count(*) OVER () AS n_groups`,
     from,
     where,
     `GROUP BY ${q}`,
     `ORDER BY ${q}`,
+    `LIMIT ${TAB_GROUP_LIMIT}`,
   ];
   return { kind: "tabulate", variable: cmd.variable, sql: lines.join("\n") };
 }
 
+/**
+ * Codebook computes N / missing / distinct / min / max for all requested
+ * variables in one scan (stat columns suffixed by variable index); the
+ * per-variable top-values queries (categorical variables only) remain
+ * separate and are executed concurrently by the executor.
+ */
 function planCodebook(
   cmd: StataCommand & { kind: "codebook" },
   ctx: PlanContext
 ): CodebookPlan {
   const from = fromClause(ctx);
-  const variables = cmd.variables.map((colId): CodebookVarPlan => {
+  const statCols: string[] = [];
+  const variables = cmd.variables.map((colId, idx): CodebookVarPlan => {
     const q = ctx.dialect.quoteCol(colId);
     const ct = columnTypeOf(ctx, colId);
     const ordered = isOrderedType(ct);
     const sqlType = ctx.schema.columnMetadata[colId].columnType;
-    const minMax = ordered
-      ? [
-          `CAST(min(${q}) AS VARCHAR) AS min_val`,
-          `CAST(max(${q}) AS VARCHAR) AS max_val`,
-        ]
-      : [
-          `CAST(NULL AS VARCHAR) AS min_val`,
-          `CAST(NULL AS VARCHAR) AS max_val`,
-        ];
-    const statsSql = [
-      `SELECT count(${q}) AS n,`,
-      `       count(*) - count(${q}) AS missing,`,
-      `       count(DISTINCT ${q}) AS distinct_count,`,
-      `       ${minMax[0]},`,
-      `       ${minMax[1]}`,
-      from,
-    ].join("\n");
+    statCols.push(
+      `count(${q}) AS n_${idx}`,
+      `count(*) - count(${q}) AS missing_${idx}`,
+      `count(DISTINCT ${q}) AS distinct_${idx}`
+    );
     if (ordered) {
-      return { variable: colId, sqlType, ordered, statsSql };
+      statCols.push(
+        `CAST(min(${q}) AS VARCHAR) AS min_${idx}`,
+        `CAST(max(${q}) AS VARCHAR) AS max_${idx}`
+      );
+    } else {
+      statCols.push(
+        `CAST(NULL AS VARCHAR) AS min_${idx}`,
+        `CAST(NULL AS VARCHAR) AS max_${idx}`
+      );
+    }
+    if (ordered) {
+      return { variable: colId, sqlType, ordered };
     }
     const topValuesSql = [
       `SELECT CAST(${q} AS VARCHAR) AS value,`,
@@ -423,9 +449,16 @@ function planCodebook(
       `ORDER BY freq DESC, value ASC`,
       `LIMIT ${TOP_VALUES_LIMIT}`,
     ].join("\n");
-    return { variable: colId, sqlType, ordered, statsSql, topValuesSql };
+    return { variable: colId, sqlType, ordered, topValuesSql };
   });
-  return { kind: "codebook", variables };
+  const statsSql = [
+    "SELECT " + statCols[0] + ",",
+    ...statCols
+      .slice(1)
+      .map((s, i) => `       ${s}${i === statCols.length - 2 ? "" : ","}`),
+    from,
+  ].join("\n");
+  return { kind: "codebook", statsSql, variables };
 }
 
 /**

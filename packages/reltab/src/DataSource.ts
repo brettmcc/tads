@@ -68,6 +68,13 @@ export interface DbDriver {
   readonly dialect: SQLDialect;
 
   runSqlQuery(sqlQuery: string): Promise<Row[]>;
+  /**
+   * Optional: run a query returning both rows and the result schema in
+   * a single round trip (used by runReadOnlySql when available).
+   */
+  runSqlQueryWithSchema?(
+    sqlQuery: string
+  ): Promise<{ schema: Schema; rows: Row[] }>;
   getTableSchema(tableName: string): Promise<Schema>;
   getSqlQuerySchema(sqlQuery: string): Promise<Schema>;
 
@@ -180,6 +187,12 @@ export class DbDataSource implements DataSourceConnection {
    */
   async runReadOnlySql(sql: string): Promise<ReadOnlySqlResult> {
     assertReadOnlySql(sql);
+    if (this.db.runSqlQueryWithSchema) {
+      const { schema, rows: rawRows } = await this.db.runSqlQueryWithSchema(
+        sql
+      );
+      return { schema, rows: rawRows.map(normalizeReadOnlyRow) };
+    }
     const schema = await this.db.getSqlQuerySchema(sql);
     const rawRows = await this.db.runSqlQuery(sql);
     const rows = rawRows.map(normalizeReadOnlyRow);

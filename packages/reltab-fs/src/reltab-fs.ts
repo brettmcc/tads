@@ -108,6 +108,12 @@ export class FSDriver implements DbDriver {
     return this.dbc.runSqlQuery(query);
   }
 
+  runSqlQueryWithSchema(
+    query: string
+  ): Promise<{ schema: Schema; rows: Row[] }> {
+    return this.dbc.runSqlQueryWithSchema(query);
+  }
+
   getTableSchema(tableName: string): Promise<Schema> {
     return this.dbc.getTableSchema(tableName);
   }
