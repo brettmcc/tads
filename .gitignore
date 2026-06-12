@@ -9,4 +9,5 @@ node_modules
 npm-debug.log
 .vscode
 lerna-debug.log
-.ideapackages/tad-app/examples/movie_metadata.parquet
+.idea
+packages/tad-app/examples/movie_metadata.parquet
