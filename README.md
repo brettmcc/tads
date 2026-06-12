@@ -72,14 +72,14 @@ used to build the Tad desktop application:
 
 ## Experimental Packages
 
-This repository also includes a number of proof-of-concept experimental packages, in varying states of completeness. These are provided for reference and as a starting
-point for further investigation and development.
-
-- [**tadweb-app**](./packages/tadweb-app/) - A minimal web app built with [tadviewer](./packages/tadviewer/), to demonstrate Tad running in a web browser.
-- [**tadweb-server**](./packages/tadweb-server/) - A reference web server for serving the Tad web app and providing the reltab back end.
-- [**reltab-aws-athena**](./packages/reltab-aws-athena/) - reltab driver for AWS Athena
-- [**reltab-bigquery**](./packages/reltab-bigquery/) - reltab driver for Google BigQuery
-- [**reltab-snowflake**](./packages/reltab-snowflake/) - reltab driver for Snowflake
+Upstream Tad shipped several proof-of-concept packages (a web app and
+server, plus AWS Athena, Google BigQuery, and Snowflake drivers). They
+have been **removed from this fork** — it targets the desktop app and
+DuckDB only, which also allowed the desktop IPC transport to drop its
+JSON encoding in favor of Electron structured clone. See upstream
+[antonycourtney/tad](https://github.com/antonycourtney/tad) if you need
+them. (`reltab-sqlite` remains in the tree but outside the default
+build.)
 
 # Building this fork (Windows)
 

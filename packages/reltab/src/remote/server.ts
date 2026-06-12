@@ -26,7 +26,7 @@ import {
 } from "../DataSource";
 import { deserializeQueryReq, QueryExp } from "../QueryExp";
 import {
-  EncodedRequestHandler,
+  RequestHandler,
   TransportClient,
   TransportServer,
 } from "./Transport";
@@ -36,10 +36,16 @@ import { serializeError } from "./errorUtils";
 import { Schema } from "../Schema";
 import { ColumnStatsMap } from "../ColumnStats";
 
+/**
+ * Server handlers return plain structured-cloneable values: class
+ * instances (TableRep, Schema) are converted to their JSON forms here,
+ * and the client-side connection revives them. Row values (bigint, Date,
+ * Buffer) pass through the transport natively.
+ */
 const dbConnEvalQuery = async (
   conn: DataSourceConnection,
   req: DbConnEvalQueryRequest
-): Promise<TableRep> => {
+): Promise<any> => {
   const query = deserializeQueryReq(req.queryStr) as any;
   const hrstart = process.hrtime();
   const offset = req.offset ? req.offset : undefined;
@@ -48,12 +54,7 @@ const dbConnEvalQuery = async (
   const qres = await conn.evalQuery(query, offset, limit, options);
   const elapsed = process.hrtime(hrstart);
   log.info("runQuery: evaluated query in  ", prettyHRTime(elapsed));
-  const qresStr = JSON.stringify(
-    qres,
-    (_, v) => (typeof v === "bigint" ? v.toString() : v),
-    2
-  );
-  return qres;
+  return { schema: qres.schema.toJSON(), rowData: qres.rowData };
 };
 
 const dbConnRowCount = async (
@@ -105,24 +106,24 @@ const dbConnGetTableName = async (
 const dbConnGetTableSchema = async (
   conn: DataSourceConnection,
   req: DbConnGetTableSchemaRequest
-): Promise<Schema> => {
+): Promise<any> => {
   const hrstart = process.hrtime();
   const { tableName } = req;
   const schema = await conn.getTableSchema(tableName);
   const elapsed = process.hrtime(hrstart);
   log.info("dbGetTableSchema: evaluated query in", prettyHRTime(elapsed));
-  return schema;
+  return schema.toJSON();
 };
 
 const dbConnRunReadOnlySql = async (
   conn: DataSourceConnection,
   req: DbConnRunReadOnlySqlRequest
-): Promise<ReadOnlySqlResult> => {
+): Promise<any> => {
   const hrstart = process.hrtime();
   const result = await conn.runReadOnlySql(req.sql);
   const elapsed = process.hrtime(hrstart);
   log.info("dbConnRunReadOnlySql: evaluated query in", prettyHRTime(elapsed));
-  return result;
+  return { schema: result.schema.toJSON(), rows: result.rows };
 };
 
 const dbConnGetColumnStatsMap = async (
@@ -303,54 +304,42 @@ const exceptionHandler =
     }
   };
 
-const simpleJSONHandler =
-  (hf: AnyReqHandler): EncodedRequestHandler =>
-  async (encodedReq: string): Promise<string> => {
-    const req = JSON.parse(encodedReq);
-    const resp = await hf(req);
-    return JSON.stringify(
-      resp,
-      (_, v) => (typeof v === "bigint" ? v.toString() : v),
-      2
-    );
-  };
-
 export const serverInit = (ts: TransportServer) => {
   ts.registerInvokeHandler(
     "getDataSources",
-    simpleJSONHandler(exceptionHandler(handleGetDataSources))
+    exceptionHandler(handleGetDataSources)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.evalQuery",
-    simpleJSONHandler(exceptionHandler(handleDbConnEvalQuery))
+    exceptionHandler(handleDbConnEvalQuery)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.rowCount",
-    simpleJSONHandler(exceptionHandler(handleDbConnRowCount))
+    exceptionHandler(handleDbConnRowCount)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.getRootNode",
-    simpleJSONHandler(exceptionHandler(handleDbConnGetRootNode))
+    exceptionHandler(handleDbConnGetRootNode)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.getChildren",
-    simpleJSONHandler(exceptionHandler(handleDbConnGetChildren))
+    exceptionHandler(handleDbConnGetChildren)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.getTableName",
-    simpleJSONHandler(exceptionHandler(handleDbConnGetTableName))
+    exceptionHandler(handleDbConnGetTableName)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.getTableSchema",
-    simpleJSONHandler(exceptionHandler(handleDbConnGetTableSchema))
+    exceptionHandler(handleDbConnGetTableSchema)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.getColumnStatsMap",
-    simpleJSONHandler(exceptionHandler(handleDbConnGetColumnStatsMap))
+    exceptionHandler(handleDbConnGetColumnStatsMap)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.runReadOnlySql",
-    simpleJSONHandler(exceptionHandler(handleDbConnRunReadOnlySql))
+    exceptionHandler(handleDbConnRunReadOnlySql)
   );
 };
 

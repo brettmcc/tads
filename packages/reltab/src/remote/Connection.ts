@@ -6,7 +6,7 @@ import {
   DataSourcePath,
   EvalQueryOptions,
 } from "../DataSource";
-import { deserializeTableRepStr, QueryExp } from "../QueryExp";
+import { deserializeTableRepJson, QueryExp } from "../QueryExp";
 import { ReadOnlySqlResult } from "../readOnlySql";
 import { Schema } from "../Schema";
 import { TableRep } from "../TableRep";
@@ -53,7 +53,9 @@ export interface DbConnGetTableNameRequest {
 export type EngineReq<T> = { engine: DataSourceId; req: T };
 
 // remote invoke a DataSourceConnection member function, using DataSourceId to
-// identify the engine:
+// identify the engine. Requests and responses are plain structured-cloneable
+// values; any class instances (Schema, TableRep) are encoded as plain JSON
+// forms on the server side and revived by the per-method wrappers below.
 async function invokeDbFunction<T>(
   tconn: TransportClient,
   engine: DataSourceId,
@@ -61,14 +63,19 @@ async function invokeDbFunction<T>(
   req: T
 ): Promise<Result<any>> {
   const ereq: EngineReq<T> = { engine, req };
-  const retStr = await tconn.invoke(
-    "DataSourceConnection." + methodName,
-    JSON.stringify(ereq)
-  );
-  // We could be more precise and try to only pass results from evalQuery through
-  // this, but should be harmless to use this for everything:
-  const ret = deserializeTableRepStr(retStr);
-  return ret;
+  const res = await tconn.invoke("DataSourceConnection." + methodName, ereq);
+  return res as Result<any>;
+}
+
+async function decodeResult<T>(res: Result<T>): Promise<T> {
+  switch (res.status) {
+    case "Ok":
+      return res.value;
+    case "Err":
+      console.log("decodeResult: got error result: ", res);
+      const errVal = deserializeError(res.errVal);
+      throw errVal;
+  }
 }
 
 class RemoteDataSourceConnection implements DataSourceConnection {
@@ -96,13 +103,13 @@ class RemoteDataSourceConnection implements DataSourceConnection {
       limit: limit ? limit : null,
       options: options ? options : defaultEvalQueryOptions,
     };
-    const ret = await invokeDbFunction(
+    const tableJson = await invokeDbFunction(
       this.tconn,
       this.sourceId,
       "evalQuery",
       req
     ).then(decodeResult);
-    return ret;
+    return deserializeTableRepJson(tableJson);
   }
 
   async rowCount(query: QueryExp, options?: EvalQueryOptions): Promise<number> {
@@ -117,22 +124,27 @@ class RemoteDataSourceConnection implements DataSourceConnection {
 
   async getTableSchema(tableName: string): Promise<Schema> {
     const req: DbConnGetTableSchemaRequest = { tableName };
-    return invokeDbFunction(
+    const schemaJson = await invokeDbFunction(
       this.tconn,
       this.sourceId,
       "getTableSchema",
       req
     ).then(decodeResult);
+    return Schema.fromJSON(schemaJson);
   }
 
   async runReadOnlySql(sql: string): Promise<ReadOnlySqlResult> {
     const req: DbConnRunReadOnlySqlRequest = { sql };
-    return invokeDbFunction(
+    const resJson = await invokeDbFunction(
       this.tconn,
       this.sourceId,
       "runReadOnlySql",
       req
     ).then(decodeResult);
+    return {
+      schema: Schema.fromJSON(resJson.schema),
+      rows: resJson.rows,
+    };
   }
 
   async getColumnStatsMap(query: QueryExp): Promise<ColumnStatsMap> {
@@ -183,28 +195,6 @@ export interface ReltabConnection {
   getDataSources(): Promise<DataSourceId[]>;
 }
 
-async function jsonInvoke(
-  tconn: TransportClient,
-  functionName: string,
-  req: any
-): Promise<any> {
-  const reqStr = JSON.stringify(req);
-  const retStr = await tconn.invoke(functionName, reqStr);
-  const ret = JSON.parse(retStr);
-  return ret;
-}
-
-async function decodeResult<T>(res: Result<T>): Promise<T> {
-  switch (res.status) {
-    case "Ok":
-      return res.value;
-    case "Err":
-      console.log("decodeResult: got error result: ", res);
-      const errVal = deserializeError(res.errVal);
-      throw errVal;
-  }
-}
-
 /**
  * Implementation of ReltabConnection interface using lower level
  * TransportClient remote invocation
@@ -222,9 +212,9 @@ export class RemoteReltabConnection implements ReltabConnection {
   }
 
   async getDataSources(): Promise<DataSourceId[]> {
-    const ret = (await jsonInvoke(this.tconn, "getDataSources", {}).then(
-      decodeResult
-    )) as any;
+    const ret = (await this.tconn
+      .invoke("getDataSources", {})
+      .then((res) => decodeResult(res as Result<any>))) as any;
     return ret["dataSourceIds"];
   }
 }

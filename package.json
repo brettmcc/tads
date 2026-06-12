@@ -10,7 +10,6 @@
     "packages/reltab",
     "packages/aggtree",
     "packages/reltab-duckdb",
-    "packages/reltab-bigquery",
     "packages/reltab-fs",
     "packages/tadviewer",
     "packages/tad-app"
@@ -27,8 +26,8 @@
     "typescript": "^4.8.3"
   },
   "scripts": {
-    "build": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-bigquery -w reltab-fs && npm run build-prod -w tadviewer && npm run build-prod -w packages/tad-app",
-    "build-dev": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-bigquery -w reltab-fs && npm run build-dev -w tadviewer && npm run build-dev -w packages/tad-app",
+    "build": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-fs && npm run build-prod -w tadviewer && npm run build-prod -w packages/tad-app",
+    "build-dev": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-fs && npm run build-dev -w tadviewer && npm run build-dev -w packages/tad-app",
     "test": "npm run test --if-present -w reltab -w reltab-duckdb -w tadviewer",
     "start": "npm run start -w packages/tad-app",
     "dist": "npm run dist -w packages/tad-app",
