@@ -1,0 +1,14 @@
+{
+  "transform": {
+    "^.+\\.tsx?$": "ts-jest"
+  },
+  "testRegex": "/test/.*test.tsx?$",
+  "testEnvironment": "node",
+  "testPathIgnorePatterns": ["/node_modules/", "/__snapshots__"],
+  "moduleFileExtensions": ["ts", "tsx", "js"],
+  "testTimeout": 20000,
+  "snapshotFormat": {
+    "escapeString": true,
+    "printBasicPrototype": true
+  }
+}

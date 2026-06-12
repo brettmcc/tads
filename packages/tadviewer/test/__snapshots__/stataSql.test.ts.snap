@@ -1,0 +1,8 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`browse plan projects requested columns and compiles the filter: browse-sql 1`] = `
+"SELECT \\"a\\", \\"b\\"
+FROM stata_fixture
+WHERE \\"c\\">2
+"
+`;

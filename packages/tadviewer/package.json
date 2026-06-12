@@ -13,6 +13,7 @@
     "build-dev": "npm run build-assets && webpack --mode development",
     "build-prod": "npm run build-assets && webpack --env prod --mode production",
     "build": "npm run build-prod",
+    "test": "jest --config jest.config.json --no-cache",
     "tsc": "tsc",
     "watch": "webpack --mode development --watch",
     "watch-prod": "webpack --env prod --mode production --watch"
@@ -57,6 +58,7 @@
     "mkdirp": "^1.0.4",
     "recursive-copy-cli": "^1.0.20",
     "reltab": "^0.14.0",
+    "reltab-duckdb": "^0.14.0",
     "resolve-url-loader": "^4.0.0",
     "sass": "^1.80.6",
     "sass-loader": "^14.2.1",
