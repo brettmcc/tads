@@ -138,7 +138,10 @@ test("basic groupBy", async () => {
   const groupSum = util.columnSum(qres, "TCOE");
   expect(BigInt(groupSum)).toBe(BigInt(tcoeSum));
 
-  expect(qres).toMatchSnapshot();
+  // DuckDB's parallel hash aggregation makes unordered GROUP BY output
+  // order nondeterministic; sort before snapshotting for stability.
+  const sortedRows = _.orderBy(qres.rowData, ["Job Family", "Title"]);
+  expect({ schema: qres.schema, rowData: sortedRows }).toMatchSnapshot();
 });
 
 const q5 = bartTableQuery.filter(

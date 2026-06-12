@@ -11,6 +11,11 @@ import { Row, LeafSchemaMap, TableRep } from "./TableRep";
 import * as log from "loglevel";
 import { QueryLeafDep, TableQueryRep } from "./QueryRep";
 import { ColumnStatsMap } from "./ColumnStats";
+import {
+  assertReadOnlySql,
+  normalizeReadOnlyRow,
+  ReadOnlySqlResult,
+} from "./readOnlySql";
 
 export type DataSourceKind =
   | "DataSource"
@@ -92,6 +97,14 @@ export interface DataSourceConnection {
   ): Promise<TableRep>;
   rowCount(query: QueryExp, options?: EvalQueryOptions): Promise<number>;
 
+  /**
+   * Execute a single read-only (SELECT / WITH ... SELECT) statement and
+   * return its schema and rows. Mutation and administrative statements
+   * are rejected. bigint and Date values are normalized so local and
+   * remote transports return identical results.
+   */
+  runReadOnlySql(sql: string): Promise<ReadOnlySqlResult>;
+
   getTableSchema(tableName: string): Promise<Schema>;
 
   getColumnStatsMap(query: QueryExp): Promise<ColumnStatsMap>;
@@ -159,6 +172,18 @@ export class DbDataSource implements DataSourceConnection {
     */
 
     return ret;
+  }
+
+  /**
+   * Execute a single validated read-only SQL statement, returning the
+   * result schema (via the driver's describe) and normalized rows.
+   */
+  async runReadOnlySql(sql: string): Promise<ReadOnlySqlResult> {
+    assertReadOnlySql(sql);
+    const schema = await this.db.getSqlQuerySchema(sql);
+    const rawRows = await this.db.runSqlQuery(sql);
+    const rows = rawRows.map(normalizeReadOnlyRow);
+    return { schema, rows };
   }
 
   async rowCount(query: QueryExp, options?: EvalQueryOptions): Promise<number> {

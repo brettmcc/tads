@@ -13,8 +13,10 @@ import {
   DbConnGetColumnStatsMapRequest,
   DbConnGetChildrenRequest,
   DbConnGetTableNameRequest,
+  DbConnRunReadOnlySqlRequest,
   ReltabConnection,
 } from "./Connection";
+import { ReadOnlySqlResult } from "../readOnlySql";
 import {
   DataSourceConnection,
   DataSourceId,
@@ -112,6 +114,17 @@ const dbConnGetTableSchema = async (
   return schema;
 };
 
+const dbConnRunReadOnlySql = async (
+  conn: DataSourceConnection,
+  req: DbConnRunReadOnlySqlRequest
+): Promise<ReadOnlySqlResult> => {
+  const hrstart = process.hrtime();
+  const result = await conn.runReadOnlySql(req.sql);
+  const elapsed = process.hrtime(hrstart);
+  log.info("dbConnRunReadOnlySql: evaluated query in", prettyHRTime(elapsed));
+  return result;
+};
+
 const dbConnGetColumnStatsMap = async (
   conn: DataSourceConnection,
   req: DbConnGetColumnStatsMapRequest
@@ -152,6 +165,7 @@ const handleDbConnGetTableSchema = mkEngineReqHandler(dbConnGetTableSchema);
 const handleDbConnGetColumnStatsMap = mkEngineReqHandler(
   dbConnGetColumnStatsMap
 );
+const handleDbConnRunReadOnlySql = mkEngineReqHandler(dbConnRunReadOnlySql);
 
 let providerRegistry: { [providerName: string]: DataSourceProvider } = {};
 
@@ -333,6 +347,10 @@ export const serverInit = (ts: TransportServer) => {
   ts.registerInvokeHandler(
     "DataSourceConnection.getColumnStatsMap",
     simpleJSONHandler(exceptionHandler(handleDbConnGetColumnStatsMap))
+  );
+  ts.registerInvokeHandler(
+    "DataSourceConnection.runReadOnlySql",
+    simpleJSONHandler(exceptionHandler(handleDbConnRunReadOnlySql))
   );
 };
 

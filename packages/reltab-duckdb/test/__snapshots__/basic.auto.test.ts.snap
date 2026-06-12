@@ -245,23 +245,8 @@ TableRep {
 `;
 
 exports[`basic groupBy 1`] = `
-TableRep {
+Object {
   "rowData": Array [
-    Object {
-      "Job Family": "Maintenance, Vehicle & Facilities",
-      "TCOE": 104260n,
-      "Title": "Transit Vehicle Mechanic",
-    },
-    Object {
-      "Job Family": "Transportation Operations",
-      "TCOE": 352988n,
-      "Title": "Station Agent",
-    },
-    Object {
-      "Job Family": "Executive Management",
-      "TCOE": 288160n,
-      "Title": "Assistant General Manager Operations",
-    },
     Object {
       "Job Family": "Engineering & Systems Engineering",
       "TCOE": 212535n,
@@ -273,39 +258,9 @@ TableRep {
       "Title": "Group Manager, Capital Projects",
     },
     Object {
-      "Job Family": "Maintenance, Vehicle & Facilities",
-      "TCOE": 113775n,
-      "Title": "Electrician",
-    },
-    Object {
-      "Job Family": "Maintenance, Vehicle & Facilities",
-      "TCOE": 123432n,
-      "Title": "Vehicle Inspector",
-    },
-    Object {
-      "Job Family": "Police",
-      "TCOE": 127660n,
-      "Title": "Revenue Protection Guard",
-    },
-    Object {
-      "Job Family": "Legal & Paralegal",
-      "TCOE": 321543n,
-      "Title": "General Counsel",
-    },
-    Object {
-      "Job Family": "Maintenance, Vehicle & Facilities",
-      "TCOE": 128332n,
-      "Title": "Wayside Inspector",
-    },
-    Object {
-      "Job Family": "Maintenance, Vehicle & Facilities",
-      "TCOE": 124962n,
-      "Title": "Structures Inspector",
-    },
-    Object {
-      "Job Family": "Finance & Accounting",
-      "TCOE": 287139n,
-      "Title": "Controller-Treasurer",
+      "Job Family": "Executive Management",
+      "TCOE": 288160n,
+      "Title": "Assistant General Manager Operations",
     },
     Object {
       "Job Family": "Executive Management",
@@ -313,14 +268,64 @@ TableRep {
       "Title": "Deputy General Manager",
     },
     Object {
+      "Job Family": "Executive Management",
+      "TCOE": 819582n,
+      "Title": "General Manager",
+    },
+    Object {
+      "Job Family": "Finance & Accounting",
+      "TCOE": 287139n,
+      "Title": "Controller-Treasurer",
+    },
+    Object {
+      "Job Family": "Legal & Paralegal",
+      "TCOE": 321543n,
+      "Title": "General Counsel",
+    },
+    Object {
       "Job Family": "Legal & Paralegal",
       "TCOE": 445028n,
       "Title": "Senior Attorney",
     },
     Object {
+      "Job Family": "Maintenance, Vehicle & Facilities",
+      "TCOE": 113775n,
+      "Title": "Electrician",
+    },
+    Object {
+      "Job Family": "Maintenance, Vehicle & Facilities",
+      "TCOE": 124962n,
+      "Title": "Structures Inspector",
+    },
+    Object {
+      "Job Family": "Maintenance, Vehicle & Facilities",
+      "TCOE": 104260n,
+      "Title": "Transit Vehicle Mechanic",
+    },
+    Object {
+      "Job Family": "Maintenance, Vehicle & Facilities",
+      "TCOE": 123432n,
+      "Title": "Vehicle Inspector",
+    },
+    Object {
+      "Job Family": "Maintenance, Vehicle & Facilities",
+      "TCOE": 128332n,
+      "Title": "Wayside Inspector",
+    },
+    Object {
+      "Job Family": "Police",
+      "TCOE": 127660n,
+      "Title": "Revenue Protection Guard",
+    },
+    Object {
       "Job Family": "Public Affairs & Marketing",
       "TCOE": 181955n,
       "Title": "Department Manager Gov't & Comm Rel",
+    },
+    Object {
+      "Job Family": "Safety",
+      "TCOE": 211941n,
+      "Title": "Chief Safety Officer",
     },
     Object {
       "Job Family": "Transportation Operations",
@@ -329,18 +334,13 @@ TableRep {
     },
     Object {
       "Job Family": "Transportation Operations",
+      "TCOE": 352988n,
+      "Title": "Station Agent",
+    },
+    Object {
+      "Job Family": "Transportation Operations",
       "TCOE": 118799n,
       "Title": "Train Operator",
-    },
-    Object {
-      "Job Family": "Executive Management",
-      "TCOE": 819582n,
-      "Title": "General Manager",
-    },
-    Object {
-      "Job Family": "Safety",
-      "TCOE": 211941n,
-      "Title": "Chief Safety Officer",
     },
   ],
   "schema": Object {

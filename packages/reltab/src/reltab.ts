@@ -12,6 +12,7 @@ export * from "./TableRep";
 export * from "./AggFn";
 export * from "./ColumnType";
 export * from "./DataSource";
+export * from "./readOnlySql";
 export * from "./toSql";
 export { AggColSpec, ColumnMapInfo } from "./QueryRep";
 export * from "./remote/Transport";

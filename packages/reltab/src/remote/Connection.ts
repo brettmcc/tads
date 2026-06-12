@@ -7,6 +7,7 @@ import {
   EvalQueryOptions,
 } from "../DataSource";
 import { deserializeTableRepStr, QueryExp } from "../QueryExp";
+import { ReadOnlySqlResult } from "../readOnlySql";
 import { Schema } from "../Schema";
 import { TableRep } from "../TableRep";
 import { deserializeError } from "./errorUtils";
@@ -31,6 +32,10 @@ export interface DbConnRowCountRequest {
 
 export interface DbConnGetTableSchemaRequest {
   tableName: string;
+}
+
+export interface DbConnRunReadOnlySqlRequest {
+  sql: string;
 }
 
 export interface DbConnGetColumnStatsMapRequest {
@@ -116,6 +121,16 @@ class RemoteDataSourceConnection implements DataSourceConnection {
       this.tconn,
       this.sourceId,
       "getTableSchema",
+      req
+    ).then(decodeResult);
+  }
+
+  async runReadOnlySql(sql: string): Promise<ReadOnlySqlResult> {
+    const req: DbConnRunReadOnlySqlRequest = { sql };
+    return invokeDbFunction(
+      this.tconn,
+      this.sourceId,
+      "runReadOnlySql",
       req
     ).then(decodeResult);
   }

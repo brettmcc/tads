@@ -138,7 +138,9 @@ export const asString = (valExp: ValExp): AsString => ({
 
 export type ColumnExtendExp = ValExp | AsString;
 
-const escRegEx = /[\0\n\r\b\t'"\x1a]/g;
+// NOTE: double quotes need no escaping inside a single-quoted SQL string
+// literal; doubling them (as this once did) corrupts the value.
+const escRegEx = /[\0\n\r\b\t'\x1a]/g;
 export const sqlEscapeMbString = (
   inStr: string | undefined | null
 ): string | undefined | null => {
@@ -167,9 +169,6 @@ export const sqlEscapeString = (inStr: string): string => {
 
       case "'":
         return "''";
-
-      case '"':
-        return '""';
 
       default:
         return "\\" + s;
