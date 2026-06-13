@@ -13,15 +13,18 @@ import {
 } from "reltab";
 import "reltab-duckdb"; // side effect: registers the duckdb provider
 import * as reltabDuckDB from "reltab-duckdb";
+import { Expr } from "../src/stataCommand/ast";
 import {
   CommandExecutionContext,
   executeCommand,
+  GridUpdate,
 } from "../src/stataCommand/executor";
+import stataReference from "./fixtures/stataCrossValidation.json";
 
 let dbds: DbDataSource;
 let ctx: CommandExecutionContext;
-let lastBrowse: { columns: string[]; filterExp: FilterExp | null } | null =
-  null;
+let fullSchema: reltab.Schema;
+let lastGrid: GridUpdate | null = null;
 
 /**
  * The acceptance fixture:
@@ -63,20 +66,25 @@ beforeAll(async () => {
   await driver.runSqlQuery(FIXTURE_DDL);
   await driver.runSqlQuery(FIXTURE_ROWS);
 
-  const schema = await dbds.getTableSchema("stata_fixture");
+  fullSchema = await dbds.getTableSchema("stata_fixture");
   ctx = {
-    schema,
+    schema: fullSchema,
     dialect: DuckDBDialect,
     baseQuery: tableQuery("stata_fixture"),
+    sortKey: [],
+    sessionFilter: null,
     runReadOnlySql: (sql: string) => dbds.runReadOnlySql(sql),
-    applyBrowse: (columns, filterExp) => {
-      lastBrowse = { columns, filterExp };
+    applyGrid: (update) => {
+      lastGrid = update;
     },
   };
 });
 
 beforeEach(() => {
-  lastBrowse = null;
+  lastGrid = null;
+  ctx.schema = fullSchema;
+  ctx.sortKey = [];
+  ctx.sessionFilter = null;
 });
 
 describe("read-only SQL guard", () => {
@@ -332,15 +340,15 @@ describe("browse", () => {
     const outcome = await executeCommand("bro a b if c > 2", ctx);
     expect(outcome.status).toBe("ok");
     if (outcome.status !== "ok") return;
-    expect(lastBrowse).not.toBeNull();
-    expect(lastBrowse!.columns).toEqual(["a", "b"]);
-    expect(lastBrowse!.filterExp).not.toBeNull();
+    expect(lastGrid).not.toBeNull();
+    expect(lastGrid!.displayColumns).toEqual(["a", "b"]);
+    expect(lastGrid!.gridFilterExp).not.toBeNull();
     expect(outcome.sql.length).toBeGreaterThan(0);
 
     // evaluating the equivalent query yields the filtered, projected rows
     const query = ctx.baseQuery
-      .filter(lastBrowse!.filterExp!)
-      .project(lastBrowse!.columns);
+      .filter(lastGrid!.gridFilterExp as FilterExp)
+      .project(lastGrid!.displayColumns!);
     const res = await dbds.evalQuery(query);
     expect(res.schema.columns).toEqual(["a", "b"]);
     expect(res.rowData).toEqual([
@@ -364,6 +372,351 @@ describe("browse", () => {
       { "has space": 30, select: "y" },
       { "has space": 50, select: "y" },
     ]);
+  });
+});
+
+describe("count, list, describe, ds", () => {
+  test("count with and without filters", async () => {
+    const all = await executeCommand("count", ctx);
+    expect(all.status).toBe("ok");
+    if (all.status !== "ok") return;
+    expect(all.blocks[0]).toEqual({ kind: "text", text: "6" });
+
+    const filtered = await executeCommand("count if c > 2", ctx);
+    if (filtered.status !== "ok") return;
+    expect(filtered.blocks[0]).toEqual({ kind: "text", text: "4" });
+  });
+
+  test("list returns capped rows with obs numbers and dots for null", async () => {
+    const outcome = await executeCommand("list a s if c >= 5", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    if (block.kind !== "table") return;
+    expect(block.columns).toEqual(["#", "a", "s"]);
+    expect(block.rows).toEqual([
+      [1, ".", "gamma"],
+      [2, 6, "alpha"],
+    ]);
+  });
+
+  test("describe reports observations and types", async () => {
+    const outcome = await executeCommand("des a s d", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.blocks[0]).toEqual({
+      kind: "text",
+      text: "Observations: 6 — Variables: 3",
+    });
+    const table = outcome.blocks[1];
+    if (table.kind !== "table") return;
+    expect(table.rows).toEqual([
+      ["a", "INTEGER"],
+      ["s", "VARCHAR"],
+      ["d", "DATE"],
+    ]);
+  });
+
+  test("ds lists matching names without SQL", async () => {
+    const outcome = await executeCommand("ds q*", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.blocks[0]).toEqual({ kind: "text", text: 'quote"name' });
+    expect(outcome.sql).toBe("");
+  });
+});
+
+describe("tab , missing", () => {
+  test("includes nulls as '.' sorted last", async () => {
+    const outcome = await executeCommand("tab s, missing", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    if (block.kind !== "table") return;
+    expect(block.rows.map((r) => r[0])).toEqual([
+      "alpha",
+      "gamma",
+      "it's",
+      'say "hi"',
+      ".",
+    ]);
+    expect(block.rows.map((r) => r[1])).toEqual([2, 1, 1, 1, 1]);
+    const cum = block.rows[4][3] as number;
+    expect(cum).toBeCloseTo(100, 10);
+    const firstPct = block.rows[0][2] as number;
+    expect(firstPct).toBeCloseTo(100 * (2 / 6), 10);
+  });
+});
+
+describe("grid commands against the session", () => {
+  test("keep if updates session filter; subsequent sum respects it", async () => {
+    const keep = await executeCommand("keep if c > 2", ctx);
+    expect(keep.status).toBe("ok");
+    expect(lastGrid).not.toBeNull();
+    expect(lastGrid!.sessionFilter).toBeDefined();
+
+    // emulate the app applying the session filter to the context
+    ctx.sessionFilter = lastGrid!.sessionFilter as Expr;
+    const outcome = await executeCommand("sum a", ctx);
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    if (block.kind !== "table") return;
+    // rows where c > 2: a in {3, 4, NULL, 6}
+    expect(block.rows[0][1]).toBe(3);
+    expect(block.rows[0][2]).toBeCloseTo(13 / 3, 10);
+  });
+
+  test("drop if negates into the session; count confirms", async () => {
+    const drop = await executeCommand("drop if c > 2", ctx);
+    expect(drop.status).toBe("ok");
+    ctx.sessionFilter = lastGrid!.sessionFilter as Expr;
+    const outcome = await executeCommand("count", ctx);
+    if (outcome.status !== "ok") return;
+    // c <= 2 keeps rows 1 and 2 (c=1,2); null c would be dropped too
+    expect(outcome.blocks[0]).toEqual({ kind: "text", text: "2" });
+  });
+
+  test("successive keep/drop filters accumulate", async () => {
+    const keep = await executeCommand("keep if c >= 2", ctx);
+    expect(keep.status).toBe("ok");
+    ctx.sessionFilter = lastGrid!.sessionFilter as Expr;
+
+    const drop = await executeCommand("drop if c >= 5", ctx);
+    expect(drop.status).toBe("ok");
+    ctx.sessionFilter = lastGrid!.sessionFilter as Expr;
+
+    const outcome = await executeCommand("count", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    // c in {2, 3, 3} after keeping c >= 2 and dropping c >= 5
+    expect(outcome.blocks[0]).toEqual({ kind: "text", text: "3" });
+    expect(outcome.sql).toContain('"c" >= 2');
+    expect(outcome.sql).toContain('"c" < 5');
+  });
+
+  test("keep varlist narrows subsequent all-variable expansion", async () => {
+    const keep = await executeCommand("keep a b c", ctx);
+    expect(keep.status).toBe("ok");
+    expect(lastGrid!.displayColumns).toEqual(["a", "b", "c"]);
+
+    // emulate the app: session schema now only has a, b, c
+    const cmMap: { [c: string]: any } = {};
+    for (const colId of ["a", "b", "c"]) {
+      cmMap[colId] = fullSchema.columnMetadata[colId];
+    }
+    ctx.schema = new reltab.Schema(DuckDBDialect, ["a", "b", "c"], cmMap);
+
+    const outcome = await executeCommand("sum", ctx);
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    if (block.kind !== "table") return;
+    expect(block.rows.map((r) => r[0])).toEqual(["a", "b", "c"]);
+  });
+
+  test("sort and gsort emit ORDER BY and sort keys", async () => {
+    const outcome = await executeCommand("gsort -c a", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(lastGrid!.sortKey).toEqual([
+      ["c", false],
+      ["a", true],
+    ]);
+    expect(outcome.sql).toContain("ORDER BY");
+    const res = await dbds.runReadOnlySql(outcome.sql);
+    expect(res.rows[0].c).toBe(5);
+  });
+
+  test("order rearranges display columns", async () => {
+    const outcome = await executeCommand("order s d", ctx);
+    expect(outcome.status).toBe("ok");
+    expect(lastGrid!.displayColumns!.slice(0, 2)).toEqual(["s", "d"]);
+  });
+});
+
+describe("summarize, detail", () => {
+  test("Stata-definition percentiles, moments, and extremes", async () => {
+    const outcome = await executeCommand("sum a, d", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    expect(block.kind).toBe("sumDetail");
+    if (block.kind !== "sumDetail") return;
+
+    // a: non-null values {1, 2, 3, 4, 6}, N = 5
+    expect(block.variable).toBe("a");
+    expect(block.n).toBe(5);
+    expect(block.sum).toBe(16);
+    expect(block.mean).toBeCloseTo(3.2, 12);
+    expect(block.sd).toBeCloseTo(Math.sqrt(3.7), 12);
+    expect(block.variance).toBeCloseTo(3.7, 12);
+    // Stata population moments: m2 = 2.96, m3 = 2.016, m4 = 17.4752
+    expect(block.skewness).toBeCloseTo(2.016 / Math.pow(2.96, 1.5), 12);
+    expect(block.kurtosis).toBeCloseTo(17.4752 / (2.96 * 2.96), 12);
+
+    const pct = new Map(block.percentiles.map((pe) => [pe.p, pe.value]));
+    expect(pct.get(50)).toBe(3); // h = 2.5 -> x_3
+    expect(pct.get(25)).toBe(2); // h = 1.25 -> x_2
+    expect(pct.get(75)).toBe(4); // h = 3.75 -> x_4
+    expect(pct.get(10)).toBe(1);
+    expect(pct.get(90)).toBe(6);
+    expect(pct.get(1)).toBe(1);
+    expect(pct.get(99)).toBe(6);
+
+    expect(block.smallest).toEqual([1, 2, 3, 4]);
+    expect(block.largest).toEqual([2, 3, 4, 6]);
+    expect(outcome.sql).toContain("quantile_disc");
+  });
+
+  test("detail handles multiple variables on one connection", async () => {
+    const outcome = await executeCommand("sum a b, detail", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.blocks.map((block) => block.kind)).toEqual([
+      "sumDetail",
+      "sumDetail",
+    ]);
+    expect(
+      outcome.blocks.map((block) =>
+        block.kind === "sumDetail" ? block.variable : null
+      )
+    ).toEqual(["a", "b"]);
+  });
+
+  test("detail respects filters", async () => {
+    const outcome = await executeCommand("sum b if c > 2, d", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    if (block.kind !== "sumDetail") return;
+    // b in {4.5, 5.5, 6.5}, N = 3
+    expect(block.n).toBe(3);
+    expect(block.mean).toBeCloseTo(5.5, 12);
+    const pct = new Map(block.percentiles.map((pe) => [pe.p, pe.value]));
+    expect(pct.get(50)).toBeCloseTo(5.5, 12); // h = 1.5 -> x_2
+  });
+});
+
+describe("histogram", () => {
+  test("default Stata bin rule and frequencies", async () => {
+    const outcome = await executeCommand("hist a", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    expect(block.kind).toBe("histogram");
+    if (block.kind !== "histogram") return;
+    // N=5 -> bins = round(min(sqrt(5), 10*log10(5))) = 2; width = 2.5
+    expect(block.n).toBe(5);
+    expect(block.freqs).toEqual([3, 2]); // {1,2,3} and {4,6}
+    expect(block.binStart).toBe(1);
+    expect(block.binWidth).toBeCloseTo(2.5, 12);
+  });
+
+  test("bin(5) override", async () => {
+    const outcome = await executeCommand("hist a, bin(5)", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    if (block.kind !== "histogram") return;
+    expect(block.freqs).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  test("histogram on string column errors", async () => {
+    const outcome = await executeCommand("hist s", ctx);
+    expect(outcome.status).toBe("error");
+    if (outcome.status !== "error") return;
+    expect(outcome.error).toContain("numeric variable");
+  });
+});
+
+describe("Stata 19 cross-validation", () => {
+  test("matches Stata summarize, detail, tabulate, and count results", async () => {
+    const sum = await executeCommand("sum a", ctx);
+    expect(sum.status).toBe("ok");
+    if (sum.status !== "ok" || sum.blocks[0].kind !== "table") return;
+    const sumRow = sum.blocks[0].rows[0];
+    expect(sumRow[0]).toBe(stataReference.summarize.variable);
+    expect(sumRow[1]).toBe(stataReference.summarize.n);
+    expect(sumRow[2]).toBeCloseTo(stataReference.summarize.mean, 12);
+    expect(sumRow[3]).toBeCloseTo(stataReference.summarize.sd, 12);
+    expect(sumRow[4]).toBe(stataReference.summarize.min);
+    expect(sumRow[5]).toBe(stataReference.summarize.max);
+
+    const detail = await executeCommand("sum a, detail", ctx);
+    expect(detail.status).toBe("ok");
+    if (detail.status !== "ok" || detail.blocks[0].kind !== "sumDetail") {
+      return;
+    }
+    const detailBlock = detail.blocks[0];
+    const detailRef = stataReference.summarizeDetail;
+    expect(detailBlock.variable).toBe(detailRef.variable);
+    expect(detailBlock.n).toBe(detailRef.n);
+    expect(detailBlock.sum).toBeCloseTo(detailRef.sum, 12);
+    expect(detailBlock.mean).toBeCloseTo(detailRef.mean, 12);
+    expect(detailBlock.sd).toBeCloseTo(detailRef.sd, 12);
+    expect(detailBlock.variance).toBeCloseTo(detailRef.variance, 12);
+    expect(detailBlock.skewness).toBeCloseTo(detailRef.skewness, 12);
+    expect(detailBlock.kurtosis).toBeCloseTo(detailRef.kurtosis, 12);
+    const percentiles = new Map(
+      detailBlock.percentiles.map(({ p, value }) => [String(p), value])
+    );
+    for (const [p, value] of Object.entries(detailRef.percentiles)) {
+      expect(percentiles.get(p)).toBeCloseTo(value, 12);
+    }
+    expect(detailBlock.smallest).toEqual(detailRef.smallest);
+    expect(detailBlock.largest).toEqual(detailRef.largest);
+
+    const detailFiltered = await executeCommand(
+      stataReference.summarizeDetailFiltered.command,
+      ctx
+    );
+    expect(detailFiltered.status).toBe("ok");
+    if (
+      detailFiltered.status !== "ok" ||
+      detailFiltered.blocks[0].kind !== "sumDetail"
+    ) {
+      return;
+    }
+    expect(detailFiltered.blocks[0].n).toBe(
+      stataReference.summarizeDetailFiltered.n
+    );
+    const filteredPercentiles = new Map(
+      detailFiltered.blocks[0].percentiles.map(({ p, value }) => [
+        String(p),
+        value,
+      ])
+    );
+    for (const [p, value] of Object.entries(
+      stataReference.summarizeDetailFiltered.percentiles
+    )) {
+      expect(filteredPercentiles.get(p)).toBeCloseTo(value, 12);
+    }
+
+    const tab = await executeCommand("tab c", ctx);
+    expect(tab.status).toBe("ok");
+    if (tab.status !== "ok" || tab.blocks[0].kind !== "table") return;
+    expect(tab.blocks[0].rows.length).toBe(stataReference.tabulate.rows.length);
+    tab.blocks[0].rows.forEach((row, idx) => {
+      const expected = stataReference.tabulate.rows[idx];
+      expect(row[0]).toBe(expected.value);
+      expect(row[1]).toBe(expected.freq);
+      expect(row[2]).toBeCloseTo(expected.percent, 12);
+      expect(row[3]).toBeCloseTo(expected.cum, 12);
+    });
+
+    const countAll = await executeCommand("count", ctx);
+    expect(countAll.status).toBe("ok");
+    if (countAll.status !== "ok") return;
+    expect(countAll.blocks[0]).toEqual({
+      kind: "text",
+      text: String(stataReference.count.all),
+    });
+    const countFiltered = await executeCommand("count if c > 2", ctx);
+    expect(countFiltered.status).toBe("ok");
+    if (countFiltered.status !== "ok") return;
+    expect(countFiltered.blocks[0]).toEqual({
+      kind: "text",
+      text: String(stataReference.count.cGreaterThan2),
+    });
   });
 });
 

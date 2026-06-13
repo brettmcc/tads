@@ -19,10 +19,12 @@ import {
   tableQuery,
 } from "reltab";
 import { AppState } from "../src/AppState";
+import { commandSchema } from "../src/commandActions";
 import { resetEntryIds } from "../src/commandState";
 import { CommandBar } from "../src/components/CommandBar";
 import { ResultsPane } from "../src/components/ResultsPane";
 import { formatCell } from "../src/components/ResultsPane";
+import { ViewParams } from "../src/ViewParams";
 import { ViewState } from "../src/ViewState";
 
 function mkSchema(): Schema {
@@ -60,10 +62,15 @@ function mkFakeDbc(): DataSourceConnection {
 }
 
 function mkAppState(): AppState {
+  const viewParams = new ViewParams({
+    displayColumns: schema.columns.slice(),
+  });
   const viewState = new ViewState({
     dbc: mkFakeDbc(),
     baseQuery: tableQuery("t"),
     baseSchema: schema,
+    viewParams,
+    initialViewParams: viewParams,
   });
   return new AppState()
     .set("initialized", true)
@@ -196,6 +203,7 @@ describe("CommandBar", () => {
     // grid state updated: displayColumns projected to ['a']
     expect(st.viewState.viewParams.displayColumns).toEqual(["a"]);
     expect(st.viewState.viewParams.filterExp.opArgs.length).toBe(1);
+    expect(commandSchema(st).columns).toEqual(["a"]);
   });
 });
 

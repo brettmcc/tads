@@ -36,6 +36,7 @@ describe("variable resolution", () => {
     expect(resolve("sum")).toEqual({
       kind: "summarize",
       variables: COLUMNS,
+      detail: false,
     });
     expect(resolve("codebook")).toEqual({
       kind: "codebook",
@@ -55,6 +56,7 @@ describe("variable resolution", () => {
     expect(resolve("tab q")).toEqual({
       kind: "tabulate",
       variable: 'quote"name',
+      missing: false,
     });
   });
 

@@ -2,7 +2,8 @@
  * Lexer for the Stata-like command language.
  *
  * Token forms:
- * - WORD:    [A-Za-z_][A-Za-z0-9_]* (command names, variable names, keywords)
+ * - WORD:    [A-Za-z_*?][A-Za-z0-9_*?]* (command names, variable names,
+ *            keywords, and varlist wildcard patterns using * and ?)
  * - QUOTED:  `...` backtick-quoted identifier; doubled backtick for a
  *            literal backtick. Allows spaces, punctuation, reserved words,
  *            and embedded double quotes in variable names.
@@ -10,7 +11,7 @@
  *            by the parser)
  * - STRING:  '...' or "..." with the quote character doubled to escape it
  *            ('it''s', "say ""hi""")
- * - OP:      ( ) & | == = != ~= <= >= < >
+ * - OP:      ( ) & | == = != ~= <= >= < > , + -
  */
 
 import { StataCommandError } from "./errors";
@@ -31,8 +32,8 @@ export interface Token {
   pos: number;
 }
 
-const isWordStart = (ch: string) => /[A-Za-z_]/.test(ch);
-const isWordChar = (ch: string) => /[A-Za-z0-9_]/.test(ch);
+const isWordStart = (ch: string) => /[A-Za-z_*?]/.test(ch);
+const isWordChar = (ch: string) => /[A-Za-z0-9_*?]/.test(ch);
 const isDigit = (ch: string) => ch >= "0" && ch <= "9";
 
 export function lex(input: string): Token[] {
@@ -168,7 +169,7 @@ export function lex(input: string): Token[] {
       i += 2;
       continue;
     }
-    if ("()&|<>=-".includes(ch)) {
+    if ("()&|<>=-,+".includes(ch)) {
       tokens.push({ type: "op", text: ch, pos: i });
       i++;
       continue;

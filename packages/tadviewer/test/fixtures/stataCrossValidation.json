@@ -1,0 +1,61 @@
+{
+  "provenance": {
+    "generatedBy": "Stata/MP 19.0",
+    "generatedOn": "2026-06-13",
+    "doFile": "stataCrossValidation.do"
+  },
+  "summarize": {
+    "variable": "a",
+    "n": 5,
+    "mean": 3.2,
+    "sd": 1.9235384061671346,
+    "min": 1,
+    "max": 6
+  },
+  "summarizeDetail": {
+    "variable": "a",
+    "n": 5,
+    "sum": 16,
+    "mean": 3.2,
+    "sd": 1.9235384061671346,
+    "variance": 3.7,
+    "skewness": 0.3958703373438166,
+    "kurtosis": 1.9945215485756025,
+    "percentiles": {
+      "1": 1,
+      "5": 1,
+      "10": 1,
+      "25": 2,
+      "50": 3,
+      "75": 4,
+      "90": 6,
+      "95": 6,
+      "99": 6
+    },
+    "smallest": [1, 2, 3, 4],
+    "largest": [2, 3, 4, 6]
+  },
+  "summarizeDetailFiltered": {
+    "command": "summarize a if a <= 4, detail",
+    "n": 4,
+    "percentiles": {
+      "25": 1.5,
+      "50": 2.5,
+      "75": 3.5
+    }
+  },
+  "tabulate": {
+    "variable": "c",
+    "n": 6,
+    "rows": [
+      { "value": "1", "freq": 1, "percent": 16.666666666666668, "cum": 16.666666666666668 },
+      { "value": "2", "freq": 1, "percent": 16.666666666666668, "cum": 33.333333333333336 },
+      { "value": "3", "freq": 2, "percent": 33.333333333333336, "cum": 66.66666666666667 },
+      { "value": "5", "freq": 2, "percent": 33.333333333333336, "cum": 100 }
+    ]
+  },
+  "count": {
+    "all": 6,
+    "cGreaterThan2": 4
+  }
+}

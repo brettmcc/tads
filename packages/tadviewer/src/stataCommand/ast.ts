@@ -39,11 +39,42 @@ export type ParsedExpr =
   | { kind: "and"; args: ParsedExpr[] }
   | { kind: "or"; args: ParsedExpr[] };
 
+/** a signed sort key as written for gsort: -price, +make */
+export interface SignedVarRef {
+  ref: VarRef;
+  descending: boolean;
+}
+
 export type ParsedCommand =
   | { kind: "browse"; variables: VarRef[]; filter?: ParsedExpr }
-  | { kind: "summarize"; variables: VarRef[]; filter?: ParsedExpr }
-  | { kind: "tabulate"; variable: VarRef; filter?: ParsedExpr }
-  | { kind: "codebook"; variables: VarRef[] };
+  | {
+      kind: "summarize";
+      variables: VarRef[];
+      filter?: ParsedExpr;
+      detail: boolean;
+    }
+  | {
+      kind: "tabulate";
+      variable: VarRef;
+      filter?: ParsedExpr;
+      missing: boolean;
+    }
+  | { kind: "codebook"; variables: VarRef[] }
+  | { kind: "describe"; variables: VarRef[] }
+  | { kind: "ds"; variables: VarRef[] }
+  | { kind: "list"; variables: VarRef[]; filter?: ParsedExpr }
+  | { kind: "count"; filter?: ParsedExpr }
+  | { kind: "order"; variables: VarRef[]; last: boolean }
+  | { kind: "sort"; variables: VarRef[] }
+  | { kind: "gsort"; keys: SignedVarRef[] }
+  | { kind: "keep"; variables: VarRef[]; filter?: ParsedExpr }
+  | { kind: "drop"; variables: VarRef[]; filter?: ParsedExpr }
+  | {
+      kind: "histogram";
+      variable: VarRef;
+      filter?: ParsedExpr;
+      bins?: number;
+    };
 
 /* ----- resolved form ----- */
 
@@ -58,13 +89,24 @@ export type Expr =
 
 /**
  * A fully resolved command. `variables` always holds exact column ids of
- * the active schema; for browse/summarize/codebook an omitted varlist has
- * been expanded to all columns.
+ * the active schema (wildcard patterns expanded, in schema order); an
+ * omitted varlist has been expanded to all columns where the command
+ * permits it. keep/drop carry either columns or a row filter, never both.
  */
 export type StataCommand =
   | { kind: "browse"; variables: string[]; filter?: Expr }
-  | { kind: "summarize"; variables: string[]; filter?: Expr }
-  | { kind: "tabulate"; variable: string; filter?: Expr }
-  | { kind: "codebook"; variables: string[] };
+  | { kind: "summarize"; variables: string[]; filter?: Expr; detail: boolean }
+  | { kind: "tabulate"; variable: string; filter?: Expr; missing: boolean }
+  | { kind: "codebook"; variables: string[] }
+  | { kind: "describe"; variables: string[] }
+  | { kind: "ds"; variables: string[] }
+  | { kind: "list"; variables: string[]; filter?: Expr }
+  | { kind: "count"; filter?: Expr }
+  | { kind: "order"; variables: string[]; last: boolean }
+  | { kind: "sort"; variables: string[] }
+  | { kind: "gsort"; keys: Array<{ name: string; descending: boolean }> }
+  | { kind: "keep"; variables: string[]; filter?: Expr }
+  | { kind: "drop"; variables: string[]; filter?: Expr }
+  | { kind: "histogram"; variable: string; filter?: Expr; bins?: number };
 
 export type CommandKind = StataCommand["kind"];

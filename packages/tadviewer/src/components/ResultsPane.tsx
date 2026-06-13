@@ -8,6 +8,12 @@ import * as React from "react";
 import { useEffect, useRef } from "react";
 import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
+import {
+  VictoryAxis,
+  VictoryBar,
+  VictoryChart,
+  VictoryTheme,
+} from "victory";
 import { AppState } from "../AppState";
 import * as commandActions from "../commandActions";
 import { CommandResultEntry } from "../commandState";
@@ -123,6 +129,116 @@ const CodebookVarBlock: React.FunctionComponent<{
   );
 };
 
+const SumDetailBlock: React.FunctionComponent<{
+  block: ResultBlock & { kind: "sumDetail" };
+}> = ({ block }) => {
+  const fmt = (v: number | null) => formatCell(v);
+  const stats: Array<[string, number | null]> = [
+    ["Obs", block.n],
+    ["Sum", block.sum],
+    ["Mean", block.mean],
+    ["Std. dev.", block.sd],
+    ["Variance", block.variance],
+    ["Skewness", block.skewness],
+    ["Kurtosis", block.kurtosis],
+  ];
+  return (
+    <div className="sum-detail" data-testid="sum-detail">
+      <div className="codebook-var-header">
+        <span className="codebook-var-name">{block.variable}</span>
+      </div>
+      <div className="sum-detail-grid">
+        <table className="command-result-table">
+          <thead>
+            <tr>
+              <th className="cell-left">Pctl.</th>
+              <th className="cell-right">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {block.percentiles.map((pe) => (
+              <tr key={pe.p}>
+                <td className="cell-left">{pe.p}%</td>
+                <td className="cell-right">{fmt(pe.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <table className="command-result-table">
+          <thead>
+            <tr>
+              <th className="cell-right">Smallest</th>
+              <th className="cell-right">Largest</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[0, 1, 2, 3].map((i) => (
+              <tr key={i}>
+                <td className="cell-right">
+                  {block.smallest[i] !== undefined
+                    ? fmt(block.smallest[i])
+                    : ""}
+                </td>
+                <td className="cell-right">
+                  {block.largest[i] !== undefined ? fmt(block.largest[i]) : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <table className="command-result-table">
+          <tbody>
+            {stats.map(([label, v]) => (
+              <tr key={label}>
+                <td className="cell-left">{label}</td>
+                <td className="cell-right">{fmt(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const HistogramBlock: React.FunctionComponent<{
+  block: ResultBlock & { kind: "histogram" };
+}> = ({ block }) => {
+  const data = block.freqs.map((freq, i) => ({
+    x: block.binStart + (i + 0.5) * block.binWidth,
+    y: freq,
+  }));
+  return (
+    <div className="command-histogram" data-testid="histogram-block">
+      <VictoryChart
+        theme={VictoryTheme.material}
+        domainPadding={{ x: 8 }}
+        width={420}
+        height={220}
+        padding={{ top: 8, bottom: 32, left: 56, right: 16 }}
+      >
+        <VictoryAxis
+          label={block.variable}
+          style={{ axisLabel: { padding: 22 } }}
+        />
+        <VictoryAxis dependentAxis />
+        <VictoryBar
+          data={data}
+          barWidth={Math.max(
+            2,
+            Math.floor(340 / Math.max(1, block.freqs.length)) - 2
+          )}
+          style={{ data: { fill: "#137cbd" } }}
+        />
+      </VictoryChart>
+      <div className="command-result-text">
+        {block.freqs.length} bin{block.freqs.length === 1 ? "" : "s"}, N ={" "}
+        {block.n.toLocaleString("en-US")}
+      </div>
+    </div>
+  );
+};
+
 const ResultBlockView: React.FunctionComponent<{ block: ResultBlock }> = ({
   block,
 }) => {
@@ -133,6 +249,10 @@ const ResultBlockView: React.FunctionComponent<{ block: ResultBlock }> = ({
       return <div className="command-result-text">{block.text}</div>;
     case "codebookVar":
       return <CodebookVarBlock block={block} />;
+    case "sumDetail":
+      return <SumDetailBlock block={block} />;
+    case "histogram":
+      return <HistogramBlock block={block} />;
   }
 };
 
@@ -157,10 +277,12 @@ const ResultEntryView: React.FunctionComponent<{
           {(entry.output ?? []).map((block, i) => (
             <ResultBlockView key={i} block={block} />
           ))}
-          <details className="entry-sql" data-testid="entry-sql">
-            <summary>SQL</summary>
-            <pre>{entry.sql}</pre>
-          </details>
+          {entry.sql !== "" ? (
+            <details className="entry-sql" data-testid="entry-sql">
+              <summary>SQL</summary>
+              <pre>{entry.sql}</pre>
+            </details>
+          ) : null}
         </>
       )}
     </div>

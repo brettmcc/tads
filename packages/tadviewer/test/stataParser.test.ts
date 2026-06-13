@@ -99,7 +99,7 @@ describe("command recognition and abbreviations", () => {
     expect(parseCommand(input).kind).toBe(kind);
   });
 
-  const bad: string[] = ["b a", "br a", "su a", "ta a", "code a", "list a", "summarizes a", "browsee a"];
+  const bad: string[] = ["b a", "br a", "su a", "ta a", "code a", "lis a", "summarizes a", "browsee a", "d a", "dro a", "kee a", "gsor a"];
   test.each(bad)("unknown command: '%s'", (input) => {
     expect(() => parseCommand(input)).toThrow(/unknown command|empty command/);
   });
@@ -121,7 +121,11 @@ describe("varlists", () => {
 
   test("empty varlist allowed for browse/sum/codebook", () => {
     expect(parseCommand("bro")).toEqual({ kind: "browse", variables: [] });
-    expect(parseCommand("sum")).toEqual({ kind: "summarize", variables: [] });
+    expect(parseCommand("sum")).toEqual({
+      kind: "summarize",
+      variables: [],
+      detail: false,
+    });
     expect(parseCommand("codebook")).toEqual({
       kind: "codebook",
       variables: [],
@@ -160,6 +164,7 @@ describe("if expressions", () => {
     expect(cmd).toEqual({
       kind: "summarize",
       variables: [v("a", 4)],
+      detail: false,
       filter: {
         kind: "cmp",
         op: ">",

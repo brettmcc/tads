@@ -2,7 +2,7 @@
  * Errors raised by the Stata command lexer, parser, and schema resolver.
  */
 
-export type CommandErrorPhase = "lex" | "parse" | "resolve";
+export type CommandErrorPhase = "lex" | "parse" | "resolve" | "plan";
 
 export class StataCommandError extends Error {
   readonly name = "StataCommandError";

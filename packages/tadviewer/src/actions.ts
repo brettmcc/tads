@@ -111,7 +111,10 @@ export const setQueryView = async (
 
   await awaitableUpdate_(
     stateRef,
-    (st: AppState): AppState => st.set("viewState", viewState) as AppState
+    (st: AppState): AppState =>
+      st
+        .set("viewState", viewState)
+        .set("sessionFilter", null) as AppState
   );
 };
 
@@ -173,7 +176,10 @@ export const replaceCurrentView = async (
 
   await awaitableUpdate_(
     stateRef,
-    (st: AppState): AppState => st.set("viewState", viewState) as AppState
+    (st: AppState): AppState =>
+      st
+        .set("viewState", viewState)
+        .set("sessionFilter", null) as AppState
   );
 };
 

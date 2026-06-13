@@ -15,25 +15,26 @@ import {
 import {
   CommandExecutionContext,
   executeCommand,
+  GridUpdate,
 } from "./stataCommand";
 import { ViewParams } from "./ViewParams";
 import { ViewState } from "./ViewState";
 
 /**
- * The schema commands resolve against: the base schema of the current
- * view minus the synthetic "Rec" record-count column that aggtree
- * appends when showRecordCount is enabled.
+ * The schema of the command session's dataset: the current view's
+ * visible columns, in display order, minus the synthetic "Rec"
+ * record-count column that aggtree appends when showRecordCount is
+ * enabled. keep/drop/order (and UI column changes) therefore shape what
+ * subsequent commands see.
  */
 export function commandSchema(appState: AppState): Schema {
   const baseSchema = appState.viewState.baseSchema;
-  if (!appState.showRecordCount) {
-    return baseSchema;
-  }
-  const cols = baseSchema.columns;
-  if (cols.length === 0 || cols[cols.length - 1] !== "Rec") {
-    return baseSchema;
-  }
-  const dataCols = cols.slice(0, cols.length - 1);
+  const displayColumns = appState.viewState.viewParams.displayColumns;
+  const dataCols = displayColumns.filter(
+    (colId) =>
+      baseSchema.columnMetadata[colId] !== undefined &&
+      !(appState.showRecordCount && colId === "Rec")
+  );
   const metaMap: { [colId: string]: any } = {};
   for (const colId of dataCols) {
     metaMap[colId] = baseSchema.columnMetadata[colId];
@@ -41,25 +42,38 @@ export function commandSchema(appState: AppState): Schema {
   return new Schema(baseSchema.dialect, dataCols, metaMap);
 }
 
-/** apply a browse command's projection + filter to the main grid */
-function applyBrowseToView(
+/** apply a grid command's view-state update */
+function applyGridToView(
   stateRef: StateRef<AppState>,
-  columns: string[],
-  filterExp: FilterExp | null
+  gridUpdate: GridUpdate
 ): void {
-  update(
-    stateRef,
-    (st: AppState): AppState =>
-      st.updateIn(["viewState", "viewParams"], (vpu: unknown) => {
-        const vp = vpu as ViewParams;
-        return vp
-          .set("displayColumns", columns)
-          .set(
-            "filterExp",
-            filterExp === null ? new FilterExp() : filterExp
-          ) as ViewParams;
-      }) as AppState
-  );
+  update(stateRef, (st: AppState): AppState => {
+    let nextSt = st.updateIn(["viewState", "viewParams"], (vpu: unknown) => {
+      let vp = vpu as ViewParams;
+      if (gridUpdate.displayColumns !== undefined) {
+        vp = vp.set("displayColumns", gridUpdate.displayColumns) as ViewParams;
+      }
+      if (gridUpdate.sortKey !== undefined) {
+        vp = vp.set("sortKey", gridUpdate.sortKey) as ViewParams;
+      }
+      if (gridUpdate.gridFilterExp !== undefined) {
+        vp = vp.set(
+          "filterExp",
+          gridUpdate.gridFilterExp === null
+            ? new FilterExp()
+            : gridUpdate.gridFilterExp
+        ) as ViewParams;
+      }
+      return vp;
+    }) as AppState;
+    if (gridUpdate.sessionFilter !== undefined) {
+      nextSt = nextSt.set(
+        "sessionFilter",
+        gridUpdate.sessionFilter
+      ) as AppState;
+    }
+    return nextSt;
+  });
 }
 
 function appendEntry(
@@ -109,9 +123,10 @@ export async function runCommandLine(
       schema: commandSchema(appState),
       dialect: viewState.baseSchema.dialect,
       baseQuery: viewState.baseQuery,
+      sortKey: viewState.viewParams.sortKey,
+      sessionFilter: appState.sessionFilter,
       runReadOnlySql: (sql: string) => viewState.dbc.runReadOnlySql(sql),
-      applyBrowse: (columns, filterExp) =>
-        applyBrowseToView(stateRef, columns, filterExp),
+      applyGrid: (gridUpdate) => applyGridToView(stateRef, gridUpdate),
     };
     const outcome = await executeCommand(trimmed, ctx);
     const entry = mkResultEntry(outcome, startedAt, Date.now() - t0);

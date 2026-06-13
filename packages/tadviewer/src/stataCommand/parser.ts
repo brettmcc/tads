@@ -3,14 +3,30 @@
  *
  * Grammar (deterministic, no backtracking):
  *
- *   command   := browseCmd | summarizeCmd | tabulateCmd | codebookCmd
+ *   command := browseCmd | summarizeCmd | tabulateCmd | codebookCmd
+ *            | describeCmd | dsCmd | listCmd | countCmd | orderCmd
+ *            | sortCmd | gsortCmd | keepCmd | dropCmd | histogramCmd
+ *
  *   browseCmd    := BROWSE varlist? ifClause?
- *   summarizeCmd := SUM varlist? ifClause?
- *   tabulateCmd  := TAB varname ifClause?
+ *   summarizeCmd := SUM varlist? ifClause? options?      -- option: d[etail]
+ *   tabulateCmd  := TAB varname ifClause? options?       -- option: m[issing]
  *   codebookCmd  := CODEBOOK varlist?
+ *   describeCmd  := DESCRIBE varlist?
+ *   dsCmd        := DS varlist?
+ *   listCmd      := LIST varlist? ifClause?
+ *   countCmd     := COUNT ifClause?
+ *   orderCmd     := ORDER varlist options?               -- option: last
+ *   sortCmd      := SORT varlist
+ *   gsortCmd     := GSORT ( ('+'|'-')? varname )+
+ *   keepCmd      := KEEP ( varlist | ifClause )
+ *   dropCmd      := DROP ( varlist | ifClause )
+ *   histogramCmd := HISTOGRAM varname ifClause? options? -- option: bin(#)
+ *
  *   ifClause  := 'if' expr
+ *   options   := ',' option+
+ *   option    := WORD | WORD '(' NUMBER ')'
  *   varlist   := varname+
- *   varname   := WORD | QUOTED
+ *   varname   := WORD | QUOTED      -- WORD may contain * and ? wildcards
  *
  *   expr      := orExpr
  *   orExpr    := andExpr ( '|' andExpr )*
@@ -19,15 +35,25 @@
  *   comparison := operand relop operand
  *   relop     := '==' | '=' | '!=' | '~=' | '<' | '<=' | '>' | '>='
  *   operand   := NUMBER | '-' NUMBER | STRING | 'null'
- *              | 'date' '(' STRING ')' | varname
+ *             | 'date' '(' STRING ')' | varname
  *
  * Precedence (tightest to loosest): parentheses, comparison, '&', '|'.
  *
  * Command names accepted (lowercase only, like Stata):
  *   browse:    bro | brow | brows | browse
- *   summarize: sum | summ | summa | summar | summari | summariz | summarize
- *   tabulate:  tab | tabu | tabul | tabula | tabulat | tabulate
+ *   summarize: sum | summ | ... | summarize
+ *   tabulate:  tab | tabu | ... | tabulate
  *   codebook:  codebook
+ *   describe:  des | desc | ... | describe
+ *   ds:        ds
+ *   list:      list
+ *   count:     cou | coun | count
+ *   order:     ord | orde | order
+ *   sort:      so | sor | sort
+ *   gsort:     gsort
+ *   keep:      keep
+ *   drop:      drop
+ *   histogram: hist | histo | ... | histogram
  *
  * Notes:
  * - `=` is accepted as a synonym for `==`, and `~=` for `!=`.
@@ -37,6 +63,9 @@
  *   quoting (`if`, `null`, `date`).
  * - Date literals use the explicit deterministic form date("YYYY-MM-DD")
  *   or date("YYYY-MM-DD HH:MM[:SS]") (a 'T' separator is also accepted).
+ * - Varlist names may contain Stata-style wildcards: `*` (any run of
+ *   characters) and `?` (one character). A bare `*` means all variables.
+ *   Wildcards are not allowed in expressions or backtick-quoted names.
  */
 
 import {
@@ -44,13 +73,16 @@ import {
   ParsedCommand,
   ParsedExpr,
   ParsedOperand,
+  SignedVarRef,
   VarRef,
 } from "./ast";
 import { StataCommandError } from "./errors";
 import { lex, Token } from "./lexer";
 
+type CommandName = ParsedCommand["kind"];
+
 const COMMAND_FORMS: Array<{
-  kind: "browse" | "summarize" | "tabulate" | "codebook";
+  kind: CommandName;
   full: string;
   minPrefix: number;
 }> = [
@@ -58,21 +90,38 @@ const COMMAND_FORMS: Array<{
   { kind: "summarize", full: "summarize", minPrefix: 3 },
   { kind: "tabulate", full: "tabulate", minPrefix: 3 },
   { kind: "codebook", full: "codebook", minPrefix: 8 },
+  { kind: "describe", full: "describe", minPrefix: 3 },
+  { kind: "ds", full: "ds", minPrefix: 2 },
+  { kind: "list", full: "list", minPrefix: 4 },
+  { kind: "count", full: "count", minPrefix: 3 },
+  { kind: "order", full: "order", minPrefix: 3 },
+  { kind: "sort", full: "sort", minPrefix: 2 },
+  { kind: "gsort", full: "gsort", minPrefix: 5 },
+  { kind: "keep", full: "keep", minPrefix: 4 },
+  { kind: "drop", full: "drop", minPrefix: 4 },
+  { kind: "histogram", full: "histogram", minPrefix: 4 },
 ];
 
-function matchCommandName(
-  name: string
-): "browse" | "summarize" | "tabulate" | "codebook" | null {
-  for (const form of COMMAND_FORMS) {
-    if (
+function matchCommandName(name: string): CommandName | null {
+  const matches = COMMAND_FORMS.filter(
+    (form) =>
       name.length >= form.minPrefix &&
       name.length <= form.full.length &&
       form.full.startsWith(name)
-    ) {
-      return form.kind;
-    }
-  }
-  return null;
+  );
+  return matches.length === 1 ? matches[0].kind : null;
+}
+
+/** parsed command option, e.g. detail or bin(20) */
+interface CmdOption {
+  name: string;
+  arg?: number;
+  pos: number;
+}
+
+/** per-command option specification: canonical name -> abbreviation/arg */
+interface OptionSpec {
+  [canonical: string]: { minPrefix: number; hasArg: boolean };
 }
 
 const DATE_RE =
@@ -141,14 +190,14 @@ class Parser {
     }
     if (first.type !== "word") {
       this.error(
-        "expected a command name (browse, sum, tab, or codebook)",
+        "expected a command name (browse, sum, tab, codebook, ...)",
         first.pos
       );
     }
     const kind = matchCommandName(first.text);
     if (kind === null) {
       this.error(
-        `unknown command '${first.text}': expected bro[wse], sum[marize], tab[ulate], or codebook`,
+        `unknown command '${first.text}': expected one of bro[wse], sum[marize], tab[ulate], codebook, des[cribe], ds, list, cou[nt], ord[er], so[rt], gsort, keep, drop, hist[ogram]`,
         first.pos
       );
     }
@@ -158,6 +207,7 @@ class Parser {
       case "browse": {
         const variables = this.parseVarlist();
         const filter = this.parseOptionalIf();
+        this.expectNoOptions("browse");
         this.expectEof();
         return filter === undefined
           ? { kind, variables }
@@ -166,36 +216,148 @@ class Parser {
       case "summarize": {
         const variables = this.parseVarlist();
         const filter = this.parseOptionalIf();
+        const opts = this.parseOptions({
+          detail: { minPrefix: 1, hasArg: false },
+        });
+        this.expectEof();
+        const detail = opts.has("detail");
+        return filter === undefined
+          ? { kind, variables, detail }
+          : { kind, variables, filter, detail };
+      }
+      case "tabulate": {
+        const variable = this.parseSingleVar("tab");
+        const filter = this.parseOptionalIf();
+        const opts = this.parseOptions({
+          missing: { minPrefix: 1, hasArg: false },
+        });
+        this.expectEof();
+        const missing = opts.has("missing");
+        return filter === undefined
+          ? { kind, variable, missing }
+          : { kind, variable, filter, missing };
+      }
+      case "codebook": {
+        const variables = this.parseVarlist();
+        this.rejectIfClause("codebook");
+        this.expectNoOptions("codebook");
+        this.expectEof();
+        return { kind, variables };
+      }
+      case "describe": {
+        const variables = this.parseVarlist();
+        this.rejectIfClause("describe");
+        this.expectNoOptions("describe");
+        this.expectEof();
+        return { kind, variables };
+      }
+      case "ds": {
+        const variables = this.parseVarlist();
+        this.rejectIfClause("ds");
+        this.expectNoOptions("ds");
+        this.expectEof();
+        return { kind, variables };
+      }
+      case "list": {
+        const variables = this.parseVarlist();
+        const filter = this.parseOptionalIf();
+        this.expectNoOptions("list");
         this.expectEof();
         return filter === undefined
           ? { kind, variables }
           : { kind, variables, filter };
       }
-      case "tabulate": {
-        const variables = this.parseVarlist();
-        if (variables.length === 0) {
-          this.error("tab requires a variable name");
-        }
-        if (variables.length > 1) {
-          this.error(
-            "tab accepts exactly one variable",
-            variables[1].pos
-          );
+      case "count": {
+        const stray = this.peek();
+        if (stray.type === "word" && stray.text !== "if") {
+          this.error("count does not take a varlist", stray.pos);
         }
         const filter = this.parseOptionalIf();
+        this.expectNoOptions("count");
         this.expectEof();
-        return filter === undefined
-          ? { kind, variable: variables[0] }
-          : { kind, variable: variables[0], filter };
+        return filter === undefined ? { kind } : { kind, filter };
       }
-      case "codebook": {
+      case "order": {
         const variables = this.parseVarlist();
-        const tok = this.peek();
-        if (tok.type === "word" && tok.text === "if") {
-          this.error("codebook does not support an if clause", tok.pos);
+        if (variables.length === 0) {
+          this.error("order requires a varlist");
         }
+        this.rejectIfClause("order");
+        const opts = this.parseOptions({
+          last: { minPrefix: 4, hasArg: false },
+        });
+        this.expectEof();
+        return { kind, variables, last: opts.has("last") };
+      }
+      case "sort": {
+        const variables = this.parseVarlist();
+        if (variables.length === 0) {
+          this.error("sort requires a varlist");
+        }
+        this.rejectIfClause("sort");
+        this.expectNoOptions("sort");
         this.expectEof();
         return { kind, variables };
+      }
+      case "gsort": {
+        const keys = this.parseSignedVarlist();
+        if (keys.length === 0) {
+          this.error("gsort requires at least one [+|-]varname");
+        }
+        this.expectNoOptions("gsort");
+        this.expectEof();
+        return { kind, keys };
+      }
+      case "keep":
+      case "drop": {
+        const ifTok = this.peek();
+        if (ifTok.type === "word" && ifTok.text === "if") {
+          const filter = this.parseOptionalIf()!;
+          this.expectNoOptions(kind);
+          this.expectEof();
+          return { kind, variables: [], filter };
+        }
+        const variables = this.parseVarlist();
+        if (variables.length === 0) {
+          this.error(`${kind} requires a varlist or an if clause`);
+        }
+        const after = this.peek();
+        if (after.type === "word" && after.text === "if") {
+          this.error(
+            `${kind} takes either a varlist or an if clause, not both`,
+            after.pos
+          );
+        }
+        this.expectNoOptions(kind);
+        this.expectEof();
+        return { kind, variables };
+      }
+      case "histogram": {
+        const variable = this.parseSingleVar("histogram");
+        const filter = this.parseOptionalIf();
+        const opts = this.parseOptions({
+          bin: { minPrefix: 3, hasArg: true },
+        });
+        this.expectEof();
+        let bins: number | undefined;
+        const binOpt = opts.get("bin");
+        if (binOpt !== undefined) {
+          if (
+            binOpt.arg === undefined ||
+            !Number.isInteger(binOpt.arg) ||
+            binOpt.arg < 1
+          ) {
+            this.error(
+              "bin() requires a positive integer, e.g. bin(20)",
+              binOpt.pos
+            );
+          }
+          bins = binOpt.arg;
+        }
+        const base: any = { kind, variable };
+        if (filter !== undefined) base.filter = filter;
+        if (bins !== undefined) base.bins = bins;
+        return base as ParsedCommand;
       }
     }
   }
@@ -210,7 +372,36 @@ class Parser {
     }
   }
 
-  /** parse zero or more variable names, stopping at `if` or end of input */
+  private rejectIfClause(cmd: string): void {
+    const tok = this.peek();
+    if (tok.type === "word" && tok.text === "if") {
+      this.error(`${cmd} does not support an if clause`, tok.pos);
+    }
+  }
+
+  private expectNoOptions(cmd: string): void {
+    const tok = this.peek();
+    if (tok.type === "op" && tok.text === ",") {
+      this.error(`${cmd} does not take options`, tok.pos);
+    }
+  }
+
+  /** parse a varlist that must contain exactly one name */
+  private parseSingleVar(cmd: string): VarRef {
+    const variables = this.parseVarlist();
+    if (variables.length === 0) {
+      this.error(`${cmd} requires a variable name`);
+    }
+    if (variables.length > 1) {
+      this.error(`${cmd} accepts exactly one variable`, variables[1].pos);
+    }
+    return variables[0];
+  }
+
+  /**
+   * parse zero or more variable names, stopping at `if`, ',', or end of
+   * input
+   */
   private parseVarlist(): VarRef[] {
     const vars: VarRef[] = [];
     for (;;) {
@@ -224,7 +415,10 @@ class Parser {
       } else if (tok.type === "quotedIdent") {
         this.next();
         vars.push({ name: tok.text, quoted: true, pos: tok.pos });
-      } else if (tok.type === "eof") {
+      } else if (
+        tok.type === "eof" ||
+        (tok.type === "op" && tok.text === ",")
+      ) {
         break;
       } else {
         this.error(
@@ -234,6 +428,129 @@ class Parser {
       }
     }
     return vars;
+  }
+
+  /** parse gsort-style signed varlist: ('+'|'-')? varname ... */
+  private parseSignedVarlist(): SignedVarRef[] {
+    const keys: SignedVarRef[] = [];
+    for (;;) {
+      let tok = this.peek();
+      let descending = false;
+      if (tok.type === "op" && (tok.text === "+" || tok.text === "-")) {
+        descending = tok.text === "-";
+        this.next();
+        tok = this.peek();
+        if (tok.type !== "word" && tok.type !== "quotedIdent") {
+          this.error("expected a variable name after sign", tok.pos);
+        }
+      }
+      if (tok.type === "word") {
+        this.next();
+        keys.push({
+          ref: { name: tok.text, quoted: false, pos: tok.pos },
+          descending,
+        });
+      } else if (tok.type === "quotedIdent") {
+        this.next();
+        keys.push({
+          ref: { name: tok.text, quoted: true, pos: tok.pos },
+          descending,
+        });
+      } else if (tok.type === "eof") {
+        break;
+      } else {
+        this.error(
+          `expected a variable name but found '${tok.text}'`,
+          tok.pos
+        );
+      }
+    }
+    return keys;
+  }
+
+  /**
+   * parse the option tail (',' option+) and validate against the
+   * command's option spec, resolving abbreviations to canonical names.
+   */
+  private parseOptions(spec: OptionSpec): Map<string, CmdOption> {
+    const out = new Map<string, CmdOption>();
+    const tok = this.peek();
+    if (!(tok.type === "op" && tok.text === ",")) {
+      return out;
+    }
+    this.next();
+    if (this.peek().type === "eof") {
+      this.error("expected an option after ','");
+    }
+    for (;;) {
+      const optTok = this.peek();
+      if (optTok.type === "eof") {
+        break;
+      }
+      if (optTok.type !== "word") {
+        this.error(
+          `expected an option name but found '${optTok.text}'`,
+          optTok.pos
+        );
+      }
+      this.next();
+      let arg: number | undefined;
+      const open = this.peek();
+      if (open.type === "op" && open.text === "(") {
+        this.next();
+        const numTok = this.peek();
+        if (numTok.type !== "number") {
+          this.error(
+            `expected a number in ${optTok.text}(...)`,
+            numTok.pos
+          );
+        }
+        this.next();
+        arg = Number(numTok.text);
+        const close = this.peek();
+        if (!(close.type === "op" && close.text === ")")) {
+          this.error("expected ')'", close.pos);
+        }
+        this.next();
+      }
+      // resolve against the spec
+      const canonical = Object.keys(spec).find(
+        (name) =>
+          optTok.text.length >= spec[name].minPrefix &&
+          optTok.text.length <= name.length &&
+          name.startsWith(optTok.text)
+      );
+      if (canonical === undefined) {
+        const allowed = Object.keys(spec)
+          .map((name) =>
+            spec[name].hasArg ? `${name}(#)` : name
+          )
+          .join(", ");
+        this.error(
+          `option '${optTok.text}' not recognized; allowed: ${
+            allowed === "" ? "(none)" : allowed
+          }`,
+          optTok.pos
+        );
+      }
+      if (spec[canonical].hasArg && arg === undefined) {
+        this.error(
+          `option '${canonical}' requires a numeric argument, e.g. ${canonical}(10)`,
+          optTok.pos
+        );
+      }
+      if (!spec[canonical].hasArg && arg !== undefined) {
+        this.error(
+          `option '${canonical}' does not take an argument`,
+          optTok.pos
+        );
+      }
+      if (out.has(canonical)) {
+        this.error(`option '${canonical}' given twice`, optTok.pos);
+      }
+      out.set(canonical, { name: canonical, arg, pos: optTok.pos });
+    }
+    return out;
   }
 
   private parseOptionalIf(): ParsedExpr | undefined {

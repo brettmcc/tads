@@ -5,6 +5,7 @@ import { DataSourcePath, DataSourceId } from "reltab";
 import { Timer } from "./Timer";
 import { Activity } from "./components/defs";
 import { CommandResultEntry } from "./commandState";
+import { Expr } from "./stataCommand/ast";
 /**
  * Immutable representation of application state
  *
@@ -47,6 +48,8 @@ export interface AppStateProps {
   commandResults: Immutable.List<CommandResultEntry>;
   resultsPaneOpen: boolean;
   commandRunning: boolean;
+  /** accumulated keep-if / drop-if dataset filter for the command session */
+  sessionFilter: Expr | null;
 }
 
 const defaultAppStateProps: AppStateProps = {
@@ -68,6 +71,7 @@ const defaultAppStateProps: AppStateProps = {
   commandResults: Immutable.List<CommandResultEntry>(),
   resultsPaneOpen: false,
   commandRunning: false,
+  sessionFilter: null,
 };
 
 export class AppState extends Immutable.Record(defaultAppStateProps) {
@@ -92,4 +96,5 @@ export class AppState extends Immutable.Record(defaultAppStateProps) {
   public readonly commandResults!: Immutable.List<CommandResultEntry>;
   public readonly resultsPaneOpen!: boolean;
   public readonly commandRunning!: boolean;
+  public readonly sessionFilter!: Expr | null;
 }
