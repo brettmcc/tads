@@ -1,18 +1,21 @@
-# Tad (Stata-command fork)
+# Tads
 
-> **This fork** extends Tad with a Stata-like command bar and an
-> append-only results pane: `bro[wse]`, `sum[marize]`, `tab[ulate]`,
-> and `codebook`, each with an optional `if` filter expression, with
-> the generated SQL visible for every command. See
-> [doc/stata-commands.md](doc/stata-commands.md) for the command
+> **Tads** is a fork of Tad focused on fast, Stata-style exploration of
+> large tabular files. Its command bar supports browsing, summaries,
+> tabulation, codebooks, listing, counting, describing, sorting,
+> keep/drop session operations, histograms, wildcard varlists, and `if`
+> expressions. The UI also provides variable Tab completion, command
+> history, query interruption, dataset size metrics, and column search.
+> See [doc/stata-commands.md](doc/stata-commands.md) for the complete
 > language and [Building this fork](#building-this-fork-windows) below.
 > The DuckDB backend has been migrated from the legacy native `duckdb`
 > module to [`@duckdb/node-api`](https://www.npmjs.com/package/@duckdb/node-api)
 > (prebuilt NAPI bindings — no Visual Studio / node-gyp build step), and
 > the monorepo now uses npm workspaces instead of Lerna bootstrap.
 
-This repository contains the source code for [Tad](https://www.tadviewer.com), an application for viewing and analyzing tabular
-data sets.
+This repository contains Tads and the retained Tad libraries it builds on.
+Tads is an Electron application for viewing and analyzing CSV, Parquet,
+SQLite, and DuckDB data.
 
 The Tad desktop application enables you to quickly view and explore tabular data in several of the most popular
 tabular data file formats: CSV, Parquet, and SQLite and DuckDb database files.
@@ -21,9 +24,9 @@ Internally, the application is powered by an in-memory instance of [DuckDb](http
 The core of Tad is a React UI component that implements a hierarchical pivot table that allows you to specify a combination of pivot, filter, aggregate, sort, column selection, column ordering and basic column formatting operations. Tad delegates to a SQL database for storage and analytics, and generates SQL queries to perform all
 analytic operations specified in the UI.
 
-Tad can be launched from the command line like this:
+During development, Tads can be launched from the command line like this:
 
-    $ tad MetObjects.csv
+    npm start -- MetObjects.csv
 
 This will open a window with a scrollable view of the full contents of the CSV file:
 

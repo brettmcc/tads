@@ -5,7 +5,7 @@ import { FilterEditor } from "./FilterEditor";
 import { AppState } from "../AppState";
 import { ViewState } from "../ViewState";
 import { StateRef } from "oneref";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getDefaultDialect } from "reltab";
 
 export interface FooterProps {
@@ -15,6 +15,22 @@ export interface FooterProps {
   rightFooterSlot?: JSX.Element;
 }
 
+export function formatByteSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let value = bytes;
+  let unitIndex = -1;
+  do {
+    value /= 1024;
+    unitIndex++;
+  } while (value >= 1024 && unitIndex < units.length - 1);
+  return `${value.toLocaleString(undefined, {
+    maximumFractionDigits: value < 10 ? 2 : value < 100 ? 1 : 0,
+  })} ${units[unitIndex]}`;
+}
+
 export const Footer: React.FunctionComponent<FooterProps> = (
   props: FooterProps
 ) => {
@@ -22,10 +38,34 @@ export const Footer: React.FunctionComponent<FooterProps> = (
   const [expanded, setExpanded] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [prevFilter, setPrevFilter] = useState<reltab.FilterExp | null>(null);
+  const [datasetInfo, setDatasetInfo] =
+    useState<reltab.DatasetInfo | null>(null);
 
   // console.log("Footer: ", appState.toJS());
 
   const viewState = appState.viewState;
+  const dsPath = viewState.dsPath;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (dsPath == null) {
+      setDatasetInfo(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    viewState.dbc
+      .getDatasetInfo(dsPath)
+      .then((info) => {
+        if (!cancelled) setDatasetInfo(info);
+      })
+      .catch(() => {
+        if (!cancelled) setDatasetInfo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewState.dbc, dsPath]);
 
   const setExpandedState = (nextState: boolean) => {
     if (nextState && !dirty) {
@@ -109,6 +149,23 @@ export const Footer: React.FunctionComponent<FooterProps> = (
       </div>
     );
   }
+  const sizeParts: string[] = [];
+  if (datasetInfo?.sourceSizeBytes != null) {
+    sizeParts.push(`Disk ${formatByteSize(datasetInfo.sourceSizeBytes)}`);
+  }
+  if (datasetInfo?.memorySizeBytes != null) {
+    sizeParts.push(`Memory ${formatByteSize(datasetInfo.memorySizeBytes)}`);
+  }
+  const datasetSizeBlock =
+    sizeParts.length === 0 ? null : (
+      <div
+        className="footer-block footer-dataset-size"
+        data-testid="footer-dataset-size"
+        title="Dataset source size and current DuckDB buffer-manager memory"
+      >
+        <span className="footer-value">{sizeParts.join(" · ")}</span>
+      </div>
+    );
   return (
     <div className={"footer " + expandClass}>
       <div className="footer-top-row">
@@ -119,6 +176,7 @@ export const Footer: React.FunctionComponent<FooterProps> = (
           <span className="filter-summary"> {filterStr}</span>
         </div>
         <div className="footer-right-block">
+          {datasetSizeBlock}
           {rowCountBlock}
           {rightFooterSlot}
         </div>

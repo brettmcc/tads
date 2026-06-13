@@ -7,6 +7,7 @@ import {
   ColumnStatsMap,
   DataSourceConnection,
   DataSourceId,
+  DatasetInfo,
   DataSourceNode,
   DataSourcePath,
   DataSourceProvider,
@@ -112,6 +113,26 @@ export class FSDriver implements DbDriver {
     query: string
   ): Promise<{ schema: Schema; rows: Row[] }> {
     return this.dbc.runSqlQueryWithSchema(query);
+  }
+
+  interrupt(): void {
+    this.dbc.interrupt();
+  }
+
+  async getDatasetInfo(dsPath: DataSourcePath): Promise<DatasetInfo> {
+    let sourceSizeBytes: number | null = null;
+    if (!this.isIPFS) {
+      try {
+        const stats = await fsPromises.stat(this.getTargetPath(dsPath));
+        sourceSizeBytes = stats.isFile() ? stats.size : null;
+      } catch {
+        sourceSizeBytes = null;
+      }
+    }
+    return {
+      sourceSizeBytes,
+      memorySizeBytes: await this.dbc.getMemoryUsageBytes(),
+    };
   }
 
   getTableSchema(tableName: string): Promise<Schema> {

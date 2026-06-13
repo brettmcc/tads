@@ -1,57 +1,88 @@
-# Stata-Style Command Bar
+# Tads Command Bar
 
-This fork of Tad adds a Stata-like command bar and a toggleable,
-append-only results pane to the desktop app. The goal is fast,
-keyboard-driven exploration of large Parquet/CSV files with familiar
-Stata idioms — not a general Stata interpreter. The grammar is
-deliberately small, deterministic, and schema-aware, and every command
-records the exact SQL it generated.
+Tads adds a small, deterministic Stata-style command language for fast
+exploration of large CSV and Parquet files. It is not a general Stata
+interpreter. Commands are schema-aware, execute through a read-only DuckDB
+API, and record their generated SQL in the results pane.
 
-## Using the command bar
+## Command bar controls
 
-The command bar sits directly under the data grid. Type a command and
-press **Enter** (or click **Run**). **Up/Down** arrows navigate command
-history. The input is disabled while a command is running, and after an
-error your typed command is preserved for correction.
+- Press **Enter** or click **Run** to execute.
+- Press **Up/Down** to navigate command history.
+- Press **PageUp** to recall the last submitted command.
+- Press **Tab** after a partial variable name to complete it. Repeated Tab
+  cycles through matches. Names that require quoting are wrapped in backticks.
+- Click **Break** to interrupt a running DuckDB query.
+- Click **Results** or press **Ctrl+`** to toggle the append-only results pane.
+- Click **Clear** in the results pane to clear command history.
 
-The results pane opens automatically for `sum`, `tab`, `codebook`, and
-errors. `browse` updates the main grid and logs a compact entry. Toggle
-the pane with the **Results** button or **Ctrl+`** (backquote). **Clear**
-empties the history without hiding the pane. Each successful entry has
-an expandable **SQL** section showing exactly what was executed.
+The command input is disabled while a command is running. Failed commands keep
+their text in the input for correction.
 
 ## Commands
 
-| Command | Forms accepted | Effect |
+| Command | Accepted form | Effect |
 | --- | --- | --- |
-| `browse varlist [if expr]` | `bro`, `brow`, `brows`, `browse` | Project the listed columns (in order) and filter the main grid. The underlying dataset is untouched; the next command still sees all columns. |
-| `summarize varlist [if expr]` | `sum`, `summ`, …, `summarize` | One row per variable: N (non-null), Mean, Std. dev. (`stddev_samp`), Min, Max. Non-numeric variables report N with the numeric statistics blank. |
-| `tabulate var [if expr]` | `tab`, `tabu`, …, `tabulate` | Frequency, percent, and cumulative percent per distinct value, sorted ascending. `NULL` is excluded (like simple Stata `tab`); percents are relative to the non-null filtered rows. |
-| `codebook varlist` | `codebook` | Per variable: SQL type, N, Missing, Distinct (exact `COUNT(DISTINCT …)`), then Min/Max for numeric and date/timestamp variables, or the top 10 values by frequency (ties broken by value, ascending) for everything else. No `if` clause. |
+| `browse` | `bro[wse] [varlist] [if expr]` | Show selected columns and an optional one-off filter in the main grid. |
+| `summarize` | `sum[marize] [varlist] [if expr] [, detail]` | N, mean, sample standard deviation, min, and max. `detail` adds exact percentiles, extremes, variance, skewness, kurtosis, and sum for numeric variables. |
+| `tabulate` | `tab[ulate] var [if expr] [, missing]` | One-way frequencies, percent, and cumulative percent. Nulls are excluded unless `missing` is given. |
+| `codebook` | `codebook [varlist]` | Type, N, missing, distinct, and min/max or top values. |
+| `describe` | `des[cribe] [varlist]` | Observation count plus variable names and SQL types. |
+| `ds` | `ds [varlist]` | List resolved variable names without querying DuckDB. |
+| `list` | `list [varlist] [if expr]` | Display the first 200 matching rows. |
+| `count` | `cou[nt] [if expr]` | Count matching observations. |
+| `order` | `ord[er] varlist [, last]` | Move variables to the front or end of the visible column order. |
+| `sort` | `so[rt] varlist` | Sort the grid ascending by each key. |
+| `gsort` | `gsort [+|-]var ...` | Sort the grid with per-key direction; `-` is descending and `+` is ascending. |
+| `keep` | `keep varlist` or `keep if expr` | Keep visible variables, or accumulate a persistent row filter. |
+| `drop` | `drop varlist` or `drop if expr` | Drop visible variables, or accumulate the inverse of a row filter. |
+| `histogram` | `hist[ogram] var [if expr] [, bin(#)]` | Render a frequency histogram for a numeric variable. |
 
-Command names are lowercase, as in Stata. An omitted varlist for
-`browse`, `summarize`, and `codebook` means *all columns*. `tab` takes
-exactly one variable.
+Options may be abbreviated where unambiguous: `sum, d`, `tab x, m`, and
+`hist x, bin(20)` are valid.
 
-## Variables
+An omitted varlist means all currently visible variables for commands that
+permit it. `tabulate` and `histogram` take exactly one variable.
 
-Variable names resolve against the columns of the loaded dataset:
+## Session behavior
 
-- An **exact match** always wins.
-- Otherwise a name may abbreviate a column by any **unique prefix**
-  (`tab dep` works if exactly one column starts with `dep`); ambiguous
-  prefixes produce an error listing the candidates. Matching is
-  case-sensitive, as in Stata.
-- Names containing spaces, punctuation, reserved words, or quotes are
-  written between **backticks**: `` bro `has space` `select` ``. Write a
-  literal backtick by doubling it. Backtick-quoted names resolve
-  exactly, never by prefix.
-- The contextual keywords `if`, `null`, and `date` can be used as
-  variable names by backtick-quoting them.
+The command session's columns are the columns currently visible in the grid,
+in display order. `browse`, `keep`, `drop`, `order`, and changes made in the
+Columns sidebar therefore affect which variables later commands can see.
 
-## Expressions (`if` clause)
+`keep if` and `drop if` accumulate a persistent session row filter. Later
+statistics combine that filter with their own `if` clause. The filter is reset
+when a different dataset or saved view is opened.
 
-```
+A `browse if` clause changes the current grid filter but is not added to the
+persistent session filter. Use `keep if` when later commands should operate on
+the same subset.
+
+## Variables and wildcards
+
+Variable matching is case-sensitive:
+
+- An exact match wins.
+- An unquoted unique prefix is accepted: `tab dep` can resolve to
+  `department`.
+- `*` matches any run of characters and `?` matches one character in a
+  varlist. Patterns expand in current schema order.
+- A bare `*` means all visible variables.
+- Wildcards are not allowed where a command requires one variable or inside an
+  expression.
+- Backtick-quoted names resolve exactly and do not expand wildcards:
+  ``sum `gross margin` ``.
+- Double a literal backtick inside a quoted name:
+  ``list `name``with``ticks` ``.
+- The contextual names `if`, `null`, and `date` must be backtick-quoted when
+  used as variables.
+
+Overlapping wildcard patterns are de-duplicated. Repeating the same explicit
+variable is an error.
+
+## If expressions
+
+```text
 expr       := orExpr
 orExpr     := andExpr ( '|' andExpr )*
 andExpr    := boolPrim ( '&' boolPrim )*
@@ -62,53 +93,57 @@ operand    := NUMBER | '-' NUMBER | STRING | 'null'
             | 'date' '(' STRING ')' | varname
 ```
 
-Precedence, tightest first: parentheses, comparison, `&`, `|`.
+Parentheses bind first, followed by comparisons, `&`, then `|`.
 
-- `=` is a synonym for `==`; `~=` for `!=`.
-- String literals use single or double quotes; double the quote
-  character to escape it: `'it''s'`, `"say ""hi"""`.
-- Null checks are explicit: `x == null`, `x != null` (other operators
-  with `null` are rejected).
-- Date and timestamp literals use a deterministic form:
-  `date("2026-06-12")` or `date("2026-06-12 10:30:00")` (a `T`
-  separator is also accepted). They compile to SQL `DATE '…'` /
-  `TIMESTAMP '…'` literals.
-- Comparisons between two columns are allowed: `if a > b`.
-- Arithmetic, functions, and anything not listed above are out of
-  scope by design.
+- `=` is a synonym for `==`; `~=` is a synonym for `!=`.
+- String literals may use single or double quotes. Double the delimiter to
+  escape it: `'it''s'`, `"say ""hi"""`.
+- Null checks must use `x == null` or `x != null`.
+- Date literals use `date("YYYY-MM-DD")` or
+  `date("YYYY-MM-DD HH:MM[:SS]")`. A `T` separator is also accepted.
+- Column-to-column comparisons are supported.
+- Arithmetic and arbitrary function calls are intentionally unsupported.
+
+## Output details
+
+`summarize, detail` uses Stata's percentile definition: when `N*p/100` is an
+integer, it averages the adjacent order statistics; otherwise it uses the
+ceiling order statistic. Skewness and kurtosis use population central moments,
+while variance and standard deviation use sample definitions. The fixture
+results are cross-validated against Stata 19.
+
+`tabulate` returns at most 1,000 groups, with percentages computed before the
+limit. `codebook` returns at most 10 top values per categorical variable.
+`list` returns at most 200 rows. Histogram bins default to
+`round(min(sqrt(N), 10*log10(N)))`.
 
 Examples:
 
-```
-bro make price if mpg > 20 & price != null
+```text
+bro make price mpg if mpg > 20
 sum price weight if foreign == 1
-tab rep78 if price >= 5000
-codebook make price mpg
-sum `gross margin` if `select` == 'yes' & d >= date("2026-01-01")
+sum price*, detail
+tab rep78, missing
+describe make price*
+list make price if price >= 5000
+count if price != null
+order make price, last
+gsort -price make
+keep if year >= 2020
+drop temporary_*
+histogram price if price > 0, bin(30)
 ```
 
-## Execution model and safety
+## Safety and limits
 
-Commands are parsed and validated against the active schema, then
-compiled to SQL through the active dialect's identifier quoting with
-correct literal escaping. `browse` compiles to the same filter
-representation used by Tad's filter UI and updates the grid in place.
-`sum`/`tab`/`codebook` run through a narrowly scoped read-only SQL API:
-a single `SELECT`/`WITH … SELECT` statement per call, no comments, no
-statement chaining — mutation and administrative statements are
-rejected server-side. The command bar never sends raw user SQL; only
-SQL produced by the planners is executed.
+Tads compiles commands to SQL using the active dialect's identifier and literal
+escaping. The command bar never sends raw user SQL. The backend accepts only a
+single read-only `SELECT` or `WITH ... SELECT` statement and rejects mutation,
+administrative statements, comments, and statement chaining. On-disk DuckDB
+files are opened in `READ_ONLY` mode.
 
-`bigint` and date values are normalized consistently across the
-Electron IPC boundary (safe integers become numbers; larger values and
-dates become strings), so results are identical in local and remote
-execution.
-
-## Known limits
-
-- One dataset at a time: commands operate on the base query of the
-  current view (pivots do not affect command results).
-- DECIMAL columns are summarized in double precision.
-- `tab` is one-way only (no two-way tables, no `, missing` option).
-- The expression grammar has no arithmetic, no functions beyond
-  `date(...)`, and no implicit `x != 0` boolean coercion.
+Commands operate on one loaded dataset at a time. Pivot groups do not change
+command results. DECIMAL summaries use double precision. SQL null comparison
+semantics differ from Stata numeric missing values: null satisfies neither an
+ordinary comparison nor its logical opposite, so use explicit null checks when
+that distinction matters.

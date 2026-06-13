@@ -37,13 +37,13 @@ async function writeFixtureParquet(target: string): Promise<void> {
   await conn.run(`
     CREATE TABLE fixture AS
     SELECT * FROM (VALUES
-      (1,    1.5,         1, 'alpha',    DATE '2026-01-01'),
-      (2,    2.5,         2, 'it''s',    DATE '2026-01-02'),
-      (3,    CAST(NULL AS DOUBLE), 3, 'say "hi"', DATE '2026-01-03'),
-      (4,    4.5,         3, NULL,       NULL),
-      (NULL, 5.5,         5, 'gamma',    DATE '2026-02-01'),
-      (6,    6.5,         5, 'alpha',    DATE '2026-03-01')
-    ) AS t(a, b, c, s, d)`);
+      (1,    1.5,         1, 'alpha',    DATE '2026-01-01', 10),
+      (2,    2.5,         2, 'it''s',    DATE '2026-01-02', 20),
+      (3,    CAST(NULL AS DOUBLE), 3, 'say "hi"', DATE '2026-01-03', 30),
+      (4,    4.5,         3, NULL,       NULL,              40),
+      (NULL, 5.5,         5, 'gamma',    DATE '2026-02-01', 50),
+      (6,    6.5,         5, 'alpha',    DATE '2026-03-01', 60)
+    ) AS t(a, b, c, s, d, "has space")`);
   await conn.run(
     `COPY fixture TO '${duckTarget}' (FORMAT PARQUET)`
   );
@@ -87,11 +87,43 @@ async function headerNames(): Promise<string[]> {
   );
 }
 
+test("command helpers, footer metrics, and column search render", async () => {
+  const input = page.locator('[data-testid="command-input"]');
+  await input.fill("sum has");
+  await input.press("Tab");
+  expect(await input.inputValue()).toBe("sum `has space`");
+  await input.fill("");
+
+  expect(
+    await page.locator('[data-testid="command-break-button"]').isDisabled()
+  ).toBe(true);
+
+  const sizeText = await page
+    .locator('[data-testid="footer-dataset-size"]')
+    .textContent({ timeout: 30000 });
+  expect(sizeText).toContain("Disk ");
+  expect(sizeText).toContain("Memory ");
+
+  await page.locator('[data-testid="activity-pivot"]').click();
+  const search = page.locator('[data-testid="column-search-input"]');
+  await search.waitFor({ timeout: 30000 });
+  await search.fill("space");
+  const rows = page.locator('[data-testid="column-selector-row"]');
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="column-selector-row"]')
+        .length === 1
+  );
+  expect(await rows.count()).toBe(1);
+  expect(await rows.first().textContent()).toContain("has space");
+  await page.locator('[data-testid="activity-pivot"]').click();
+}, 90000);
+
 test("browse updates the main grid", async () => {
   // all fixture columns (plus the record-count column) initially
   const initialHeaders = await headerNames();
   expect(initialHeaders).toEqual(
-    expect.arrayContaining(["a", "b", "c", "s", "d"])
+    expect.arrayContaining(["a", "b", "c", "s", "d", "has space"])
   );
 
   await runCommand("bro a b if c > 2");
@@ -127,7 +159,7 @@ test("browse updates the main grid", async () => {
 }, 90000);
 
 test("summarize appends a table to the results pane", async () => {
-  await runCommand("sum a b if c > 2");
+  await runCommand("sum a b if a >= 3");
 
   await page.waitForSelector('[data-testid="results-pane"]', {
     timeout: 30000,
@@ -141,7 +173,7 @@ test("summarize appends a table to the results pane", async () => {
     .locator("table.command-result-table tbody td")
     .allTextContents();
   // a: N=3, mean 4.333333, sd 1.527525, min 3, max 6
-  // b: N=3, mean 5.5, sd 1, min 4.5, max 6.5
+  // b: N=2, mean 5.5, sd 1.414214, min 4.5, max 6.5
   expect(cellTexts.slice(0, 6)).toEqual([
     "a",
     "3",
@@ -150,7 +182,18 @@ test("summarize appends a table to the results pane", async () => {
     "3",
     "6",
   ]);
-  expect(cellTexts.slice(6, 12)).toEqual(["b", "3", "5.5", "1", "4.5", "6.5"]);
+  expect(cellTexts.slice(6, 12)).toEqual([
+    "b",
+    "2",
+    "5.5",
+    "1.414214",
+    "4.5",
+    "6.5",
+  ]);
+
+  const input = page.locator('[data-testid="command-input"]');
+  await input.press("PageUp");
+  expect(await input.inputValue()).toBe("sum a b if a >= 3");
 }, 90000);
 
 test("generated SQL is visible for every command", async () => {

@@ -2,6 +2,7 @@ import { ColumnStatsMap } from "../ColumnStats";
 import {
   DataSourceConnection,
   DataSourceId,
+  DatasetInfo,
   DataSourceNode,
   DataSourcePath,
   EvalQueryOptions,
@@ -36,6 +37,10 @@ export interface DbConnGetTableSchemaRequest {
 
 export interface DbConnRunReadOnlySqlRequest {
   sql: string;
+}
+
+export interface DbConnGetDatasetInfoRequest {
+  path: DataSourcePath;
 }
 
 export interface DbConnGetColumnStatsMapRequest {
@@ -145,6 +150,25 @@ class RemoteDataSourceConnection implements DataSourceConnection {
       schema: Schema.fromJSON(resJson.schema),
       rows: resJson.rows,
     };
+  }
+
+  async interrupt(): Promise<void> {
+    await invokeDbFunction(
+      this.tconn,
+      this.sourceId,
+      "interrupt",
+      {}
+    ).then(decodeResult);
+  }
+
+  async getDatasetInfo(path: DataSourcePath): Promise<DatasetInfo> {
+    const req: DbConnGetDatasetInfoRequest = { path };
+    return invokeDbFunction(
+      this.tconn,
+      this.sourceId,
+      "getDatasetInfo",
+      req
+    ).then(decodeResult);
   }
 
   async getColumnStatsMap(query: QueryExp): Promise<ColumnStatsMap> {

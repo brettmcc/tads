@@ -63,7 +63,7 @@ async function main() {
     );
     console.log("browse updated the grid (columns a, b)");
 
-    await input.fill("sum a b if c > 2");
+    await input.fill("sum a b if a >= 3");
     await input.press("Enter");
     await page.waitForSelector('[data-testid="results-pane"]', { timeout: 30000 });
     const cells = await page

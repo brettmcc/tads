@@ -14,6 +14,77 @@ export interface CommandBarProps {
   stateRef: StateRef<AppState>;
 }
 
+const SIMPLE_VARIABLE_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const QUOTED_VARIABLE_KEYWORDS = new Set(["if", "null", "date"]);
+
+export function formatVariableForCommand(name: string): string {
+  if (
+    SIMPLE_VARIABLE_RE.test(name) &&
+    !QUOTED_VARIABLE_KEYWORDS.has(name)
+  ) {
+    return name;
+  }
+  return "`" + name.replace(/`/g, "``") + "`";
+}
+
+interface CompletionSpan {
+  start: number;
+  end: number;
+  prefix: string;
+}
+
+function completionSpan(
+  input: string,
+  selectionStart: number,
+  selectionEnd: number
+): CompletionSpan | null {
+  if (selectionEnd > selectionStart) {
+    return {
+      start: selectionStart,
+      end: selectionEnd,
+      prefix: input.slice(selectionStart, selectionEnd).replace(/^`/, ""),
+    };
+  }
+
+  const beforeCaret = input.slice(0, selectionStart);
+  const lastBacktick = beforeCaret.lastIndexOf("`");
+  if (lastBacktick >= 0) {
+    const backticksBefore = beforeCaret
+      .slice(0, lastBacktick)
+      .split("`").length - 1;
+    if (backticksBefore % 2 === 0) {
+      let end = selectionEnd;
+      if (input[end] === "`") end++;
+      return {
+        start: lastBacktick,
+        end,
+        prefix: input.slice(lastBacktick + 1, selectionStart),
+      };
+    }
+  }
+
+  let start = selectionStart;
+  while (start > 0 && /[A-Za-z0-9_*?]/.test(input[start - 1])) {
+    start--;
+  }
+  if (start === selectionStart) {
+    return null;
+  }
+  return {
+    start,
+    end: selectionEnd,
+    prefix: input.slice(start, selectionStart),
+  };
+}
+
+interface CompletionCycle {
+  before: string;
+  after: string;
+  matches: string[];
+  index: number;
+  rendered: string;
+}
+
 export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
   appState,
   stateRef,
@@ -24,9 +95,17 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
   // null means "not navigating" (draft preserved separately)
   const [histIndex, setHistIndex] = useState<number | null>(null);
   const draftRef = useRef("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const completionRef = useRef<CompletionCycle | null>(null);
 
   const { commandRunning, commandResults } = appState;
   const history = commandResults.toArray().map((e) => e.command);
+  const completionColumns = commandActions.commandSchema(appState).columns;
+
+  const setInputWithCaret = (value: string, caret: number) => {
+    setInputValue(value);
+    setTimeout(() => inputRef.current?.setSelectionRange(caret, caret), 0);
+  };
 
   const runCommand = async () => {
     if (commandRunning || inputValue.trim().length === 0) {
@@ -44,6 +123,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
       setInputValue("");
     }
     setHistIndex(null);
+    completionRef.current = null;
   };
 
   const navigateHistory = (delta: -1 | 1) => {
@@ -71,6 +151,64 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     }
     setHistIndex(nextIndex);
     setInputValue(history[nextIndex]);
+    completionRef.current = null;
+  };
+
+  const recallLastCommand = () => {
+    if (history.length === 0) {
+      return;
+    }
+    draftRef.current = inputValue;
+    const nextIndex = history.length - 1;
+    setHistIndex(nextIndex);
+    setInputValue(history[nextIndex]);
+    completionRef.current = null;
+  };
+
+  const completeVariable = (
+    selectionStart: number,
+    selectionEnd: number
+  ): boolean => {
+    const previous = completionRef.current;
+    if (
+      previous !== null &&
+      inputValue === previous.before + previous.rendered + previous.after &&
+      selectionStart === previous.before.length + previous.rendered.length &&
+      selectionEnd === selectionStart
+    ) {
+      const index = (previous.index + 1) % previous.matches.length;
+      const rendered = formatVariableForCommand(previous.matches[index]);
+      completionRef.current = { ...previous, index, rendered };
+      const nextValue = previous.before + rendered + previous.after;
+      setInputWithCaret(nextValue, previous.before.length + rendered.length);
+      return true;
+    }
+
+    const span = completionSpan(inputValue, selectionStart, selectionEnd);
+    if (span === null || span.prefix.length === 0) {
+      return false;
+    }
+    if (inputValue.slice(0, span.start).trim().length === 0) {
+      return false;
+    }
+    const matches = completionColumns.filter((column) =>
+      column.startsWith(span.prefix)
+    );
+    if (matches.length === 0) {
+      return false;
+    }
+    const rendered = formatVariableForCommand(matches[0]);
+    const before = inputValue.slice(0, span.start);
+    const after = inputValue.slice(span.end);
+    completionRef.current = {
+      before,
+      after,
+      matches,
+      index: 0,
+      rendered,
+    };
+    setInputWithCaret(before + rendered + after, before.length + rendered.length);
+    return true;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -83,6 +221,19 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       navigateHistory(1);
+    } else if (e.key === "PageUp") {
+      e.preventDefault();
+      recallLastCommand();
+    } else if (e.key === "Tab") {
+      const target = e.currentTarget;
+      if (
+        completeVariable(
+          target.selectionStart ?? inputValue.length,
+          target.selectionEnd ?? inputValue.length
+        )
+      ) {
+        e.preventDefault();
+      }
     }
   };
 
@@ -99,6 +250,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
       <div className="command-bar">
         <span className="command-prompt">.</span>
         <input
+          ref={inputRef}
           className="command-input"
           data-testid="command-input"
           type="text"
@@ -111,6 +263,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
             setInputValue(e.target.value);
             setLastError(null);
             setHistIndex(null);
+            completionRef.current = null;
           }}
           onKeyDown={handleKeyDown}
         />
@@ -121,6 +274,20 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
           data-testid="command-run-button"
         >
           Run
+        </Button>
+        <Button
+          small={true}
+          intent="danger"
+          disabled={!commandRunning}
+          onClick={() => {
+            void commandActions.interruptCommand(stateRef).catch((err) => {
+              console.error("Failed to interrupt command", err);
+            });
+          }}
+          data-testid="command-break-button"
+          title="Interrupt the running command"
+        >
+          Break
         </Button>
         <Button
           small={true}

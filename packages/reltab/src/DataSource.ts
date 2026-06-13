@@ -45,6 +45,13 @@ export interface DataSourcePath {
   path: string[];
 }
 
+export interface DatasetInfo {
+  /** source file/database size when the source has a local on-disk form */
+  sourceSizeBytes: number | null;
+  /** current DuckDB buffer-manager memory attributed to the connection */
+  memorySizeBytes: number | null;
+}
+
 export interface DataSourceNode {
   id: string; // component of DataSourcePath.path, or fully qualified name for leaf nodes
   kind: DataSourceKind;
@@ -88,6 +95,12 @@ export interface DbDriver {
 
   // display name for this connection
   getDisplayName(): Promise<string>;
+
+  /** Interrupt currently executing queries owned by this driver. */
+  interrupt?(): Promise<void> | void;
+
+  /** Return lightweight storage metrics for a dataset path. */
+  getDatasetInfo?(path: DataSourcePath): Promise<DatasetInfo>;
 }
 
 /**
@@ -111,6 +124,12 @@ export interface DataSourceConnection {
    * remote transports return identical results.
    */
   runReadOnlySql(sql: string): Promise<ReadOnlySqlResult>;
+
+  /** Interrupt currently executing queries on this connection. */
+  interrupt(): Promise<void>;
+
+  /** Return source-file and in-memory size metrics when available. */
+  getDatasetInfo(path: DataSourcePath): Promise<DatasetInfo>;
 
   getTableSchema(tableName: string): Promise<Schema>;
 
@@ -197,6 +216,17 @@ export class DbDataSource implements DataSourceConnection {
     const rawRows = await this.db.runSqlQuery(sql);
     const rows = rawRows.map(normalizeReadOnlyRow);
     return { schema, rows };
+  }
+
+  async interrupt(): Promise<void> {
+    await this.db.interrupt?.();
+  }
+
+  async getDatasetInfo(path: DataSourcePath): Promise<DatasetInfo> {
+    if (this.db.getDatasetInfo) {
+      return this.db.getDatasetInfo(path);
+    }
+    return { sourceSizeBytes: null, memorySizeBytes: null };
   }
 
   async rowCount(query: QueryExp, options?: EvalQueryOptions): Promise<number> {

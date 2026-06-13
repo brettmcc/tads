@@ -39,6 +39,7 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       minimal={true}
       active={activity === target}
       onClick={handleActivityClick(target)}
+      data-testid={`activity-${target.toLocaleLowerCase()}`}
     />
   );
 

@@ -5,6 +5,7 @@ import { ViewParams } from "../ViewParams";
 import * as reltab from "reltab";
 import { StateRef } from "oneref";
 import { AppState } from "../AppState";
+import { useState } from "react";
 
 export interface ColumnSelectorProps {
   schema: reltab.Schema;
@@ -23,6 +24,8 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   onColumnClick,
   stateRef,
 }) => {
+  const [searchText, setSearchText] = useState("");
+
   const handleRowClick = (cid: string) => {
     if (onColumnClick) {
       onColumnClick(cid);
@@ -38,7 +41,7 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
       viewParams.sortKey.findIndex((entry) => entry[0] === cid) !== -1;
     const tooltipContent = <span>{displayName}</span>;
     return (
-      <tr key={cid}>
+      <tr key={cid} data-testid="column-selector-row">
         <td className="col-colName" onClick={(e) => handleRowClick(cid)}>
           <span className="col-colName-text" title={displayName}>
             {displayName}
@@ -101,7 +104,23 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
     );
   };
 
-  const columnIds = schema.columns.slice();
+  const normalizedSearch = searchText.trim().toLocaleLowerCase();
+  const columnIds = schema.columns.filter((cid) => {
+    if (normalizedSearch.length === 0) {
+      return true;
+    }
+    return (
+      cid.toLocaleLowerCase().includes(normalizedSearch) ||
+      schema
+        .displayName(cid)
+        .toLocaleLowerCase()
+        .includes(normalizedSearch) ||
+      schema
+        .columnType(cid)
+        .sqlTypeName.toLocaleLowerCase()
+        .includes(normalizedSearch)
+    );
+  });
   columnIds.sort((cid1, cid2) =>
     schema.displayName(cid1).localeCompare(schema.displayName(cid2))
   );
@@ -109,6 +128,16 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   const columnRows = columnIds.map((cid) => renderColumnRow(cid));
   return (
     <div className="column-selector">
+      <div className="column-selector-search">
+        <input
+          type="search"
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="Search columns"
+          aria-label="Search columns"
+          data-testid="column-search-input"
+        />
+      </div>
       <div className="column-selector-header">
         <table className="table table-condensed bp4-interactive column-selector-table">
           <thead>

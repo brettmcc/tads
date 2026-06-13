@@ -14,12 +14,14 @@ import {
   DbConnGetChildrenRequest,
   DbConnGetTableNameRequest,
   DbConnRunReadOnlySqlRequest,
+  DbConnGetDatasetInfoRequest,
   ReltabConnection,
 } from "./Connection";
 import { ReadOnlySqlResult } from "../readOnlySql";
 import {
   DataSourceConnection,
   DataSourceId,
+  DatasetInfo,
   DataSourceNode,
   DataSourcePath,
   DataSourceProvider,
@@ -126,6 +128,19 @@ const dbConnRunReadOnlySql = async (
   return { schema: result.schema.toJSON(), rows: result.rows };
 };
 
+const dbConnInterrupt = async (
+  conn: DataSourceConnection
+): Promise<void> => {
+  await conn.interrupt();
+};
+
+const dbConnGetDatasetInfo = async (
+  conn: DataSourceConnection,
+  req: DbConnGetDatasetInfoRequest
+): Promise<DatasetInfo> => {
+  return conn.getDatasetInfo(req.path);
+};
+
 const dbConnGetColumnStatsMap = async (
   conn: DataSourceConnection,
   req: DbConnGetColumnStatsMapRequest
@@ -167,6 +182,8 @@ const handleDbConnGetColumnStatsMap = mkEngineReqHandler(
   dbConnGetColumnStatsMap
 );
 const handleDbConnRunReadOnlySql = mkEngineReqHandler(dbConnRunReadOnlySql);
+const handleDbConnInterrupt = mkEngineReqHandler(dbConnInterrupt);
+const handleDbConnGetDatasetInfo = mkEngineReqHandler(dbConnGetDatasetInfo);
 
 let providerRegistry: { [providerName: string]: DataSourceProvider } = {};
 
@@ -340,6 +357,14 @@ export const serverInit = (ts: TransportServer) => {
   ts.registerInvokeHandler(
     "DataSourceConnection.runReadOnlySql",
     exceptionHandler(handleDbConnRunReadOnlySql)
+  );
+  ts.registerInvokeHandler(
+    "DataSourceConnection.interrupt",
+    exceptionHandler(handleDbConnInterrupt)
+  );
+  ts.registerInvokeHandler(
+    "DataSourceConnection.getDatasetInfo",
+    exceptionHandler(handleDbConnGetDatasetInfo)
   );
 };
 

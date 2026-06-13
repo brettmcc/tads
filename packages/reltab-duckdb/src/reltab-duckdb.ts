@@ -1,4 +1,5 @@
 import * as log from "loglevel";
+import * as fsPromises from "fs/promises";
 import {
   colIsNumeric,
   ColumnMetadata,
@@ -7,6 +8,7 @@ import {
   ColumnType,
   DataSourceConnection,
   DataSourceId,
+  DatasetInfo,
   DataSourceNode,
   DataSourcePath,
   DataSourceProvider,
@@ -61,24 +63,35 @@ const typeLookup = (tnm: string): ColumnType => {
 class ConnectionPool {
   db: DuckDBDatabase;
   private pool: DuckDBConnection[];
+  private active: Set<DuckDBConnection>;
 
   constructor(db: DuckDBDatabase) {
     this.db = db;
     this.pool = [];
+    this.active = new Set();
   }
 
   async take(): Promise<DuckDBConnection> {
+    let conn: DuckDBConnection;
     if (this.pool.length > 0) {
-      return this.pool.pop()!;
+      conn = this.pool.pop()!;
     } else {
-      const conn = await this.db.connect();
+      conn = await this.db.connect();
       await initS3(conn);
-      return conn;
     }
+    this.active.add(conn);
+    return conn;
   }
 
   giveBack(conn: DuckDBConnection) {
+    this.active.delete(conn);
     this.pool.push(conn);
+  }
+
+  interrupt(): void {
+    for (const conn of this.active) {
+      conn.interrupt();
+    }
   }
 }
 
@@ -215,6 +228,33 @@ export class DuckDBDriver implements DbDriver {
       this.connPool.giveBack(conn);
     }
     return ret;
+  }
+
+  interrupt(): void {
+    this.connPool.interrupt();
+  }
+
+  async getMemoryUsageBytes(): Promise<number> {
+    const rows = await this.runSqlQuery(
+      "SELECT coalesce(sum(memory_usage_bytes), 0) AS memory_bytes FROM duckdb_memory()"
+    );
+    const value = rows[0]?.memory_bytes;
+    return typeof value === "bigint" ? Number(value) : Number(value ?? 0);
+  }
+
+  async getDatasetInfo(_path: DataSourcePath): Promise<DatasetInfo> {
+    let sourceSizeBytes: number | null = null;
+    if (this.dbfile !== ":memory:") {
+      try {
+        sourceSizeBytes = (await fsPromises.stat(this.dbfile)).size;
+      } catch {
+        sourceSizeBytes = null;
+      }
+    }
+    return {
+      sourceSizeBytes,
+      memorySizeBytes: await this.getMemoryUsageBytes(),
+    };
   }
 
   /**

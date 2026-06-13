@@ -7,7 +7,7 @@
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as Immutable from "immutable";
-import { mkRef, mutableGet, refContainer, StateRef } from "oneref";
+import { mkRef, mutableGet, refContainer, StateRef, update } from "oneref";
 import * as React from "react";
 import {
   ColumnMetaMap,
@@ -21,7 +21,12 @@ import {
 import { AppState } from "../src/AppState";
 import { commandSchema } from "../src/commandActions";
 import { resetEntryIds } from "../src/commandState";
-import { CommandBar } from "../src/components/CommandBar";
+import {
+  CommandBar,
+  formatVariableForCommand,
+} from "../src/components/CommandBar";
+import { ColumnSelector } from "../src/components/ColumnSelector";
+import { Footer, formatByteSize } from "../src/components/Footer";
 import { ResultsPane } from "../src/components/ResultsPane";
 import { formatCell } from "../src/components/ResultsPane";
 import { ViewParams } from "../src/ViewParams";
@@ -32,6 +37,7 @@ function mkSchema(): Schema {
     ["a", "INTEGER"],
     ["b", "DOUBLE"],
     ["s", "VARCHAR"],
+    ["has space", "INTEGER"],
   ];
   const cmMap: ColumnMetaMap = {};
   for (const [colId, columnType] of cols) {
@@ -48,6 +54,11 @@ const schema = mkSchema();
 
 /** canned summarize result for `sum a` (single wide aggregate row) */
 const sumRows: Row[] = [{ n_0: 3, mean_0: 2, sd_0: 1, min_0: 1, max_0: 3 }];
+const interruptMock = jest.fn(async (): Promise<void> => {});
+const getDatasetInfoMock = jest.fn(async () => ({
+  sourceSizeBytes: 1536,
+  memorySizeBytes: 5 * 1024 * 1024,
+}));
 
 function mkFakeDbc(): DataSourceConnection {
   const fake: Partial<DataSourceConnection> = {
@@ -57,6 +68,8 @@ function mkFakeDbc(): DataSourceConnection {
       }
       return { schema, rows: [] };
     },
+    interrupt: interruptMock,
+    getDatasetInfo: getDatasetInfoMock,
   };
   return fake as DataSourceConnection;
 }
@@ -67,6 +80,10 @@ function mkAppState(): AppState {
   });
   const viewState = new ViewState({
     dbc: mkFakeDbc(),
+    dsPath: {
+      sourceId: { providerName: "duckdb", resourceId: ":memory:" },
+      path: ["t"],
+    },
     baseQuery: tableQuery("t"),
     baseSchema: schema,
     viewParams,
@@ -104,6 +121,8 @@ const typeCommand = (text: string) => {
 
 beforeEach(() => {
   resetEntryIds();
+  interruptMock.mockClear();
+  getDatasetInfoMock.mockClear();
 });
 
 describe("CommandBar", () => {
@@ -188,6 +207,47 @@ describe("CommandBar", () => {
     );
   });
 
+  test("PageUp recalls the last submitted command", async () => {
+    renderHarness();
+    const input = typeCommand("sum a");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await screen.findByTestId("result-entry");
+    expect(input.value).toBe("");
+
+    fireEvent.keyDown(input, { key: "PageUp" });
+    expect(input.value).toBe("sum a");
+  });
+
+  test("Tab completes variables and quotes names that need it", () => {
+    renderHarness();
+    const input = typeCommand("sum has");
+    input.setSelectionRange(input.value.length, input.value.length);
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(input.value).toBe("sum `has space`");
+  });
+
+  test("Tab does not treat the command token as a variable", () => {
+    renderHarness();
+    const input = typeCommand("s");
+    input.setSelectionRange(input.value.length, input.value.length);
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(input.value).toBe("s");
+  });
+
+  test("Break interrupts the active connection", async () => {
+    const stateRef = renderHarness();
+    act(() => {
+      update(
+        stateRef,
+        (st) => st.set("commandRunning", true) as AppState
+      );
+    });
+    fireEvent.click(screen.getByTestId("command-break-button"));
+    await waitFor(() => expect(interruptMock).toHaveBeenCalledTimes(1));
+  });
+
   test("browse appends an entry but does not auto-open the pane", async () => {
     const stateRef = renderHarness();
     const input = typeCommand("bro a if b > 1");
@@ -243,6 +303,63 @@ describe("ResultsPane", () => {
     expect(entries.length).toBe(2);
     expect(entries[0].textContent).toContain("sum a");
     expect(entries[1].textContent).toContain("sum nope");
+  });
+});
+
+describe("command helpers", () => {
+  test("formats safe and quoted variable names", () => {
+    expect(formatVariableForCommand("price")).toBe("price");
+    expect(formatVariableForCommand("has space")).toBe("`has space`");
+    expect(formatVariableForCommand("if")).toBe("`if`");
+    expect(formatVariableForCommand("a`b")).toBe("`a``b`");
+  });
+});
+
+describe("ColumnSelector", () => {
+  test("search filters columns by name or type", () => {
+    const appState = mkAppState();
+    const stateRef = mkRef(appState);
+    render(
+      <ColumnSelector
+        schema={schema}
+        viewParams={appState.viewState.viewParams}
+        stateRef={stateRef}
+      />
+    );
+    expect(screen.getAllByTestId("column-selector-row").length).toBe(4);
+
+    fireEvent.change(screen.getByTestId("column-search-input"), {
+      target: { value: "space" },
+    });
+    const rows = screen.getAllByTestId("column-selector-row");
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain("has space");
+
+    fireEvent.change(screen.getByTestId("column-search-input"), {
+      target: { value: "double" },
+    });
+    expect(screen.getAllByTestId("column-selector-row")[0].textContent).toContain(
+      "b"
+    );
+  });
+});
+
+describe("Footer", () => {
+  test("shows disk and memory sizes from the connection", async () => {
+    const appState = mkAppState();
+    const stateRef = mkRef(appState);
+    render(<Footer appState={appState} stateRef={stateRef} />);
+    const size = await screen.findByTestId("footer-dataset-size");
+    expect(size.textContent).toBe("Disk 1.5 KiB · Memory 5 MiB");
+    expect(getDatasetInfoMock).toHaveBeenCalledWith(
+      appState.viewState.dsPath
+    );
+  });
+
+  test("formats byte units", () => {
+    expect(formatByteSize(12)).toBe("12 B");
+    expect(formatByteSize(1024)).toBe("1 KiB");
+    expect(formatByteSize(1024 * 1024)).toBe("1 MiB");
   });
 });
 

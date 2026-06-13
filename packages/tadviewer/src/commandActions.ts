@@ -137,6 +137,17 @@ export async function runCommandLine(
   }
 }
 
+/** Request cancellation of the currently running command query. */
+export async function interruptCommand(
+  stateRef: StateRef<AppState>
+): Promise<void> {
+  const appState = mutableGet(stateRef);
+  if (!appState.commandRunning || appState.viewState?.dbc == null) {
+    return;
+  }
+  await appState.viewState.dbc.interrupt();
+}
+
 export function toggleResultsPane(stateRef: StateRef<AppState>): void {
   update(
     stateRef,
