@@ -18,6 +18,7 @@ import {
   NumericSummaryStats,
   registerProvider,
   Row,
+  RunSqlQueryOpts,
   Schema,
   SQLDialect,
   TextSummaryStats,
@@ -64,14 +65,16 @@ class ConnectionPool {
   db: DuckDBDatabase;
   private pool: DuckDBConnection[];
   private active: Set<DuckDBConnection>;
+  private interruptibleActive: Set<DuckDBConnection>;
 
   constructor(db: DuckDBDatabase) {
     this.db = db;
     this.pool = [];
     this.active = new Set();
+    this.interruptibleActive = new Set();
   }
 
-  async take(): Promise<DuckDBConnection> {
+  async take(opts?: RunSqlQueryOpts): Promise<DuckDBConnection> {
     let conn: DuckDBConnection;
     if (this.pool.length > 0) {
       conn = this.pool.pop()!;
@@ -80,18 +83,36 @@ class ConnectionPool {
       await initS3(conn);
     }
     this.active.add(conn);
+    if (opts?.interruptible) {
+      this.interruptibleActive.add(conn);
+    }
     return conn;
   }
 
   giveBack(conn: DuckDBConnection) {
     this.active.delete(conn);
+    this.interruptibleActive.delete(conn);
     this.pool.push(conn);
   }
 
   interrupt(): void {
-    for (const conn of this.active) {
+    for (const conn of this.interruptibleActive) {
       conn.interrupt();
     }
+  }
+}
+
+/** Size in bytes of the file at `path`, or null if it can't be stat'd
+ * (missing, permission denied, not a regular file when `requireFile`). */
+export async function statFileSizeOrNull(
+  path: string,
+  requireFile: boolean = false
+): Promise<number | null> {
+  try {
+    const stats = await fsPromises.stat(path);
+    return !requireFile || stats.isFile() ? stats.size : null;
+  } catch {
+    return null;
   }
 }
 
@@ -218,8 +239,8 @@ export class DuckDBDriver implements DbDriver {
     this.connPool = new ConnectionPool(db);
   }
 
-  async runSqlQuery(query: string): Promise<Row[]> {
-    const conn = await this.connPool.take();
+  async runSqlQuery(query: string, opts?: RunSqlQueryOpts): Promise<Row[]> {
+    const conn = await this.connPool.take(opts);
     let ret: Row[];
     try {
       log.info("runSqlQuery:\n", query);
@@ -243,14 +264,10 @@ export class DuckDBDriver implements DbDriver {
   }
 
   async getDatasetInfo(_path: DataSourcePath): Promise<DatasetInfo> {
-    let sourceSizeBytes: number | null = null;
-    if (this.dbfile !== ":memory:") {
-      try {
-        sourceSizeBytes = (await fsPromises.stat(this.dbfile)).size;
-      } catch {
-        sourceSizeBytes = null;
-      }
-    }
+    const sourceSizeBytes =
+      this.dbfile !== ":memory:"
+        ? await statFileSizeOrNull(this.dbfile)
+        : null;
     return {
       sourceSizeBytes,
       memorySizeBytes: await this.getMemoryUsageBytes(),
@@ -262,9 +279,10 @@ export class DuckDBDriver implements DbDriver {
    * avoiding the extra describe round trip.
    */
   async runSqlQueryWithSchema(
-    query: string
+    query: string,
+    opts?: RunSqlQueryOpts
   ): Promise<{ schema: Schema; rows: Row[] }> {
-    const conn = await this.connPool.take();
+    const conn = await this.connPool.take(opts);
     try {
       log.info("runSqlQueryWithSchema:\n", query);
       const { rows, columnNames, columnTypeNames } =

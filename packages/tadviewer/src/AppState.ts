@@ -50,6 +50,14 @@ export interface AppStateProps {
   commandRunning: boolean;
   /** accumulated keep-if / drop-if dataset filter for the command session */
   sessionFilter: Expr | null;
+  /**
+   * accumulated keep/drop/order variable list for the command session, in
+   * effect independent of the grid's displayColumns (which UI actions like
+   * the column selector's show/hide checkbox also mutate). null means no
+   * keep/drop/order command has run yet, so commands see every column in
+   * baseSchema.
+   */
+  sessionColumns: string[] | null;
 }
 
 const defaultAppStateProps: AppStateProps = {
@@ -72,6 +80,7 @@ const defaultAppStateProps: AppStateProps = {
   resultsPaneOpen: false,
   commandRunning: false,
   sessionFilter: null,
+  sessionColumns: null,
 };
 
 export class AppState extends Immutable.Record(defaultAppStateProps) {
@@ -97,4 +106,5 @@ export class AppState extends Immutable.Record(defaultAppStateProps) {
   public readonly resultsPaneOpen!: boolean;
   public readonly commandRunning!: boolean;
   public readonly sessionFilter!: Expr | null;
+  public readonly sessionColumns!: string[] | null;
 }

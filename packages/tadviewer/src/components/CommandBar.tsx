@@ -3,7 +3,7 @@
  * up/down command history, and a toggle for the results pane.
  */
 import * as React from "react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
 import { AppState } from "../AppState";
@@ -35,45 +35,40 @@ interface CompletionSpan {
 
 function completionSpan(
   input: string,
-  selectionStart: number,
-  selectionEnd: number
+  caret: number
 ): CompletionSpan | null {
-  if (selectionEnd > selectionStart) {
-    return {
-      start: selectionStart,
-      end: selectionEnd,
-      prefix: input.slice(selectionStart, selectionEnd).replace(/^`/, ""),
-    };
-  }
-
-  const beforeCaret = input.slice(0, selectionStart);
+  const beforeCaret = input.slice(0, caret);
   const lastBacktick = beforeCaret.lastIndexOf("`");
   if (lastBacktick >= 0) {
     const backticksBefore = beforeCaret
       .slice(0, lastBacktick)
       .split("`").length - 1;
     if (backticksBefore % 2 === 0) {
-      let end = selectionEnd;
-      if (input[end] === "`") end++;
+      const closingBacktick = input.indexOf("`", caret);
+      const end = closingBacktick >= 0 ? closingBacktick + 1 : input.length;
       return {
         start: lastBacktick,
         end,
-        prefix: input.slice(lastBacktick + 1, selectionStart),
+        prefix: input.slice(lastBacktick + 1, caret),
       };
     }
   }
 
-  let start = selectionStart;
+  let start = caret;
   while (start > 0 && /[A-Za-z0-9_*?]/.test(input[start - 1])) {
     start--;
   }
-  if (start === selectionStart) {
+  if (start === caret) {
     return null;
+  }
+  let end = caret;
+  while (end < input.length && /[A-Za-z0-9_*?]/.test(input[end])) {
+    end++;
   }
   return {
     start,
-    end: selectionEnd,
-    prefix: input.slice(start, selectionStart),
+    end,
+    prefix: input.slice(start, caret),
   };
 }
 
@@ -99,8 +94,16 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
   const completionRef = useRef<CompletionCycle | null>(null);
 
   const { commandRunning, commandResults } = appState;
-  const history = commandResults.toArray().map((e) => e.command);
-  const completionColumns = commandActions.commandSchema(appState).columns;
+  const history = useMemo(
+    () => commandResults.toArray().map((e) => e.command),
+    [commandResults]
+  );
+  const { baseSchema } = appState.viewState;
+  const { sessionColumns, showRecordCount } = appState;
+  const completionColumns = useMemo(
+    () => commandActions.commandSchema(appState).columns,
+    [baseSchema, sessionColumns, showRecordCount]
+  );
 
   const setInputWithCaret = (value: string, caret: number) => {
     setInputValue(value);
@@ -165,16 +168,12 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     completionRef.current = null;
   };
 
-  const completeVariable = (
-    selectionStart: number,
-    selectionEnd: number
-  ): boolean => {
+  const completeVariable = (caret: number): boolean => {
     const previous = completionRef.current;
     if (
       previous !== null &&
       inputValue === previous.before + previous.rendered + previous.after &&
-      selectionStart === previous.before.length + previous.rendered.length &&
-      selectionEnd === selectionStart
+      caret === previous.before.length + previous.rendered.length
     ) {
       const index = (previous.index + 1) % previous.matches.length;
       const rendered = formatVariableForCommand(previous.matches[index]);
@@ -184,7 +183,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
       return true;
     }
 
-    const span = completionSpan(inputValue, selectionStart, selectionEnd);
+    const span = completionSpan(inputValue, caret);
     if (span === null || span.prefix.length === 0) {
       return false;
     }
@@ -226,12 +225,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
       recallLastCommand();
     } else if (e.key === "Tab") {
       const target = e.currentTarget;
-      if (
-        completeVariable(
-          target.selectionStart ?? inputValue.length,
-          target.selectionEnd ?? inputValue.length
-        )
-      ) {
+      if (completeVariable(target.selectionStart ?? inputValue.length)) {
         e.preventDefault();
       }
     }

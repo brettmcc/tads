@@ -64,6 +64,14 @@ export interface EvalQueryOptions {
   showQueries?: boolean;
 }
 
+export interface RunSqlQueryOpts {
+  /** Mark this query as cancellable via the connection's interrupt(),
+   * e.g. Stata command execution. Grid queries (evalQuery/rowCount) leave
+   * this unset so an interrupted command can't cancel unrelated in-flight
+   * grid fetches sharing the same underlying connection pool. */
+  interruptible?: boolean;
+}
+
 /**
  * A driver for a particular database, capable of
  * executing SQL queries, obtaining schema info
@@ -74,13 +82,14 @@ export interface DbDriver {
   readonly sourceId: DataSourceId;
   readonly dialect: SQLDialect;
 
-  runSqlQuery(sqlQuery: string): Promise<Row[]>;
+  runSqlQuery(sqlQuery: string, opts?: RunSqlQueryOpts): Promise<Row[]>;
   /**
    * Optional: run a query returning both rows and the result schema in
    * a single round trip (used by runReadOnlySql when available).
    */
   runSqlQueryWithSchema?(
-    sqlQuery: string
+    sqlQuery: string,
+    opts?: RunSqlQueryOpts
   ): Promise<{ schema: Schema; rows: Row[] }>;
   getTableSchema(tableName: string): Promise<Schema>;
   getSqlQuerySchema(sqlQuery: string): Promise<Schema>;
@@ -206,14 +215,16 @@ export class DbDataSource implements DataSourceConnection {
    */
   async runReadOnlySql(sql: string): Promise<ReadOnlySqlResult> {
     assertReadOnlySql(sql);
+    const opts: RunSqlQueryOpts = { interruptible: true };
     if (this.db.runSqlQueryWithSchema) {
       const { schema, rows: rawRows } = await this.db.runSqlQueryWithSchema(
-        sql
+        sql,
+        opts
       );
       return { schema, rows: rawRows.map(normalizeReadOnlyRow) };
     }
     const schema = await this.db.getSqlQuerySchema(sql);
-    const rawRows = await this.db.runSqlQuery(sql);
+    const rawRows = await this.db.runSqlQuery(sql, opts);
     const rows = rawRows.map(normalizeReadOnlyRow);
     return { schema, rows };
   }

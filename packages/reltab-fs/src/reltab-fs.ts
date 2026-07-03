@@ -17,6 +17,7 @@ import {
   getConnection,
   registerProvider,
   Row,
+  RunSqlQueryOpts,
   Schema,
   SQLDialect,
 } from "reltab";
@@ -105,14 +106,15 @@ export class FSDriver implements DbDriver {
     this.sourceId = { providerName: "localfs", resourceId: rootPath };
   }
 
-  async runSqlQuery(query: string): Promise<Row[]> {
-    return this.dbc.runSqlQuery(query);
+  async runSqlQuery(query: string, opts?: RunSqlQueryOpts): Promise<Row[]> {
+    return this.dbc.runSqlQuery(query, opts);
   }
 
   runSqlQueryWithSchema(
-    query: string
+    query: string,
+    opts?: RunSqlQueryOpts
   ): Promise<{ schema: Schema; rows: Row[] }> {
-    return this.dbc.runSqlQueryWithSchema(query);
+    return this.dbc.runSqlQueryWithSchema(query, opts);
   }
 
   interrupt(): void {
@@ -120,15 +122,12 @@ export class FSDriver implements DbDriver {
   }
 
   async getDatasetInfo(dsPath: DataSourcePath): Promise<DatasetInfo> {
-    let sourceSizeBytes: number | null = null;
-    if (!this.isIPFS) {
-      try {
-        const stats = await fsPromises.stat(this.getTargetPath(dsPath));
-        sourceSizeBytes = stats.isFile() ? stats.size : null;
-      } catch {
-        sourceSizeBytes = null;
-      }
-    }
+    const sourceSizeBytes = this.isIPFS
+      ? null
+      : await reltabDuckDB.statFileSizeOrNull(
+          this.getTargetPath(dsPath),
+          true
+        );
     return {
       sourceSizeBytes,
       memorySizeBytes: await this.dbc.getMemoryUsageBytes(),

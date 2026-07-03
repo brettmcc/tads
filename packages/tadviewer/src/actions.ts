@@ -114,7 +114,8 @@ export const setQueryView = async (
     (st: AppState): AppState =>
       st
         .set("viewState", viewState)
-        .set("sessionFilter", null) as AppState
+        .set("sessionFilter", null)
+        .set("sessionColumns", null) as AppState
   );
 };
 
@@ -179,7 +180,8 @@ export const replaceCurrentView = async (
     (st: AppState): AppState =>
       st
         .set("viewState", viewState)
-        .set("sessionFilter", null) as AppState
+        .set("sessionFilter", null)
+        .set("sessionColumns", null) as AppState
   );
 };
 

@@ -394,9 +394,11 @@ describe("count, list, describe, ds", () => {
     const block = outcome.blocks[0];
     if (block.kind !== "table") return;
     expect(block.columns).toEqual(["#", "a", "s"]);
+    // deterministic order: no grid sort key set, so list falls back to
+    // ordering by its own listed columns (a ascending, nulls last)
     expect(block.rows).toEqual([
-      [1, ".", "gamma"],
-      [2, 6, "alpha"],
+      [1, 6, "alpha"],
+      [2, ".", "gamma"],
     ]);
   });
 

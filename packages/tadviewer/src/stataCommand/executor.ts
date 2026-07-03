@@ -90,6 +90,12 @@ export interface GridUpdate {
   sessionFilter?: Expr | null;
   /** compiled grid filter to install (only when provided) */
   gridFilterExp?: FilterExp | null;
+  /**
+   * new accumulated keep/drop/order variable list (only set by
+   * keep/drop/order, never by sort/gsort/browse, which don't change
+   * which variables the command session sees)
+   */
+  sessionColumns?: string[];
 }
 
 export interface CommandExecutionContext {
@@ -254,8 +260,16 @@ async function runSumDetail(
       sqlParts.push(r.sql);
     }
   }
+  const blocks: ResultBlock[] = [];
+  if (plan.skipped.length > 0) {
+    blocks.push({
+      kind: "text",
+      text: `note: omitted non-numeric variable(s): ${plan.skipped.join(", ")}`,
+    });
+  }
+  blocks.push(...results.map((r) => r.block));
   return {
-    blocks: results.map((r) => r.block),
+    blocks,
     sql: sqlParts.join(";\n\n"),
   };
 }
@@ -456,6 +470,9 @@ async function runGrid(
   if (plan.sessionChanged) {
     update.sessionFilter = plan.sessionFilter;
     update.gridFilterExp = plan.gridFilterExp;
+  }
+  if (plan.op === "keep" || plan.op === "drop" || plan.op === "order") {
+    update.sessionColumns = plan.displayColumns;
   }
   await ctx.applyGrid(update);
   return [{ kind: "text", text: plan.note }];

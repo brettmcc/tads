@@ -155,6 +155,8 @@ export interface SumDetailPlan {
   kind: "sumDetail";
   /** numeric variables only, in command order */
   variables: string[];
+  /** non-numeric variables requested but omitted from the detail panels */
+  skipped: string[];
   /** phase 1: N and mean for every variable in one scan */
   phase1Sql: string;
   /**
@@ -585,6 +587,9 @@ function planSumDetail(
   const explicit = cmd.variables.filter((colId) =>
     colIsNumeric(columnTypeOf(ctx, colId))
   );
+  const skipped = cmd.variables.filter(
+    (colId) => !colIsNumeric(columnTypeOf(ctx, colId))
+  );
   if (explicit.length === 0) {
     throw new StataCommandError(
       "plan",
@@ -658,6 +663,7 @@ function planSumDetail(
   return {
     kind: "sumDetail",
     variables: explicit,
+    skipped,
     phase1Sql: phase1Lines.join("\n"),
     mkDetailSql,
   };
@@ -791,6 +797,18 @@ function planList(
   if (where !== "") {
     lines.push(where);
   }
+  // Without an ORDER BY, DuckDB's parallel scan can return a different
+  // subset/order of rows on each run. Respect the grid's current sort,
+  // falling back to the listed columns themselves for a deterministic
+  // default.
+  const sortKey = currentSortKey(ctx);
+  const orderTerms =
+    sortKey.length > 0
+      ? sortKey.map(
+          ([c, asc]) => `${ctx.dialect.quoteCol(c)}${asc ? "" : " DESC"}`
+        )
+      : cols;
+  lines.push(`ORDER BY ${orderTerms.join(", ")}`);
   lines.push(`LIMIT ${LIST_LIMIT}`);
   return { kind: "list", variables: cmd.variables, sql: lines.join("\n") };
 }

@@ -19,6 +19,7 @@ import {
   tableQuery,
 } from "reltab";
 import { AppState } from "../src/AppState";
+import { toggleShown } from "../src/actions";
 import { commandSchema } from "../src/commandActions";
 import { resetEntryIds } from "../src/commandState";
 import {
@@ -263,7 +264,52 @@ describe("CommandBar", () => {
     // grid state updated: displayColumns projected to ['a']
     expect(st.viewState.viewParams.displayColumns).toEqual(["a"]);
     expect(st.viewState.viewParams.filterExp.opArgs.length).toBe(1);
-    expect(commandSchema(st).columns).toEqual(["a"]);
+    // browse only narrows the grid's displayColumns; it must not narrow
+    // which variables subsequent commands can resolve (that's reserved
+    // for keep/drop/order), so commandSchema still sees every column.
+    expect(commandSchema(st).columns).toEqual(
+      st.viewState.baseSchema.columns
+    );
+  });
+
+  test("hiding a column via the sidebar does not block commands on it", async () => {
+    const stateRef = renderHarness();
+    act(() => {
+      toggleShown("b", stateRef);
+    });
+    expect(
+      mutableGet(stateRef).viewState.viewParams.displayColumns
+    ).not.toContain("b");
+
+    const input = typeCommand("sum b");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await screen.findByTestId("result-entry");
+
+    const st = mutableGet(stateRef);
+    expect(st.commandResults.get(0)!.status).toBe("ok");
+  });
+
+  test("drop removes a variable from subsequent command resolution", async () => {
+    const stateRef = renderHarness();
+    let input = typeCommand("drop b");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await screen.findByTestId("result-entry");
+
+    input = typeCommand("sum b");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("result-entry").length).toBe(2)
+    );
+
+    const st = mutableGet(stateRef);
+    expect(st.commandResults.get(0)!.status).toBe("ok"); // the drop itself
+    expect(st.commandResults.get(1)!.status).toBe("error"); // sum b now unresolvable
   });
 });
 

@@ -253,10 +253,17 @@ export function resolveCommand(
     case "histogram": {
       const variable = resolveVar(cmd.variable, columns);
       const filter = maybeFilter(cmd.filter, columns);
-      const base: StataCommand = { kind: "histogram", variable };
-      if (filter !== undefined) (base as any).filter = filter;
-      if (cmd.bins !== undefined) (base as any).bins = cmd.bins;
-      return base;
+      const bins = cmd.bins;
+      if (filter === undefined && bins === undefined) {
+        return { kind: "histogram", variable };
+      }
+      if (filter === undefined) {
+        return { kind: "histogram", variable, bins };
+      }
+      if (bins === undefined) {
+        return { kind: "histogram", variable, filter };
+      }
+      return { kind: "histogram", variable, filter, bins };
     }
   }
 }

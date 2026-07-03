@@ -354,10 +354,16 @@ class Parser {
           }
           bins = binOpt.arg;
         }
-        const base: any = { kind, variable };
-        if (filter !== undefined) base.filter = filter;
-        if (bins !== undefined) base.bins = bins;
-        return base as ParsedCommand;
+        if (filter === undefined && bins === undefined) {
+          return { kind, variable };
+        }
+        if (filter === undefined) {
+          return { kind, variable, bins };
+        }
+        if (bins === undefined) {
+          return { kind, variable, filter };
+        }
+        return { kind, variable, filter, bins };
       }
     }
   }

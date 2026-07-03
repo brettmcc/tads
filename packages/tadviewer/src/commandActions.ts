@@ -21,16 +21,19 @@ import { ViewParams } from "./ViewParams";
 import { ViewState } from "./ViewState";
 
 /**
- * The schema of the command session's dataset: the current view's
- * visible columns, in display order, minus the synthetic "Rec"
- * record-count column that aggtree appends when showRecordCount is
- * enabled. keep/drop/order (and UI column changes) therefore shape what
- * subsequent commands see.
+ * The schema of the command session's dataset: every column of the
+ * loaded dataset, minus the synthetic "Rec" record-count column that
+ * aggtree appends when showRecordCount is enabled, constrained by
+ * whatever keep/drop/order commands have run this session
+ * (appState.sessionColumns). This is intentionally independent of the
+ * grid's displayColumns: showing/hiding a column via the sidebar only
+ * changes what's visible in the grid and must not affect which
+ * variables commands like `summarize` can resolve.
  */
 export function commandSchema(appState: AppState): Schema {
   const baseSchema = appState.viewState.baseSchema;
-  const displayColumns = appState.viewState.viewParams.displayColumns;
-  const dataCols = displayColumns.filter(
+  const sessionColumns = appState.sessionColumns ?? baseSchema.columns;
+  const dataCols = sessionColumns.filter(
     (colId) =>
       baseSchema.columnMetadata[colId] !== undefined &&
       !(appState.showRecordCount && colId === "Rec")
@@ -70,6 +73,12 @@ function applyGridToView(
       nextSt = nextSt.set(
         "sessionFilter",
         gridUpdate.sessionFilter
+      ) as AppState;
+    }
+    if (gridUpdate.sessionColumns !== undefined) {
+      nextSt = nextSt.set(
+        "sessionColumns",
+        gridUpdate.sessionColumns
       ) as AppState;
     }
     return nextSt;

@@ -54,16 +54,23 @@ export const Footer: React.FunctionComponent<FooterProps> = (
         cancelled = true;
       };
     }
-    viewState.dbc
-      .getDatasetInfo(dsPath)
-      .then((info) => {
-        if (!cancelled) setDatasetInfo(info);
-      })
-      .catch(() => {
-        if (!cancelled) setDatasetInfo(null);
-      });
+    const refresh = () => {
+      viewState.dbc
+        .getDatasetInfo(dsPath)
+        .then((info) => {
+          if (!cancelled) setDatasetInfo(info);
+        })
+        .catch(() => {
+          if (!cancelled) setDatasetInfo(null);
+        });
+    };
+    refresh();
+    // memory usage grows as queries run (grid paging, Stata commands); poll
+    // so the footer doesn't freeze at the value captured on dataset load.
+    const intervalId = setInterval(refresh, 5000);
     return () => {
       cancelled = true;
+      clearInterval(intervalId);
     };
   }, [viewState.dbc, dsPath]);
 
