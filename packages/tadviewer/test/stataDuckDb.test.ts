@@ -171,6 +171,30 @@ describe("summarize", () => {
     expect(block.rows).toEqual([["s", 5, null, null, null, null]]);
   });
 
+  test("date variables report date statistics", async () => {
+    const outcome = await executeCommand("sum d ts", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const block = outcome.blocks[0];
+    if (block.kind !== "table") return;
+    // d: 2026-01-01, 01-02, 01-03, 02-01, 03-01 (one null)
+    // day offsets 0,1,2,31,59: mean 18.6 -> 2026-01-19, sd ~26.06 days
+    const dRow = block.rows[0];
+    expect(dRow[0]).toBe("d");
+    expect(dRow[1]).toBe(5);
+    expect(dRow[2]).toBe("2026-01-19");
+    expect(String(dRow[3])).toMatch(/^26\.06\d* days$/);
+    expect(dRow[4]).toBe("2026-01-01");
+    expect(dRow[5]).toBe("2026-03-01");
+    const tsRow = block.rows[1];
+    expect(tsRow[0]).toBe("ts");
+    expect(tsRow[1]).toBe(5);
+    // times of day pull the mean past the mean of the date parts
+    expect(String(tsRow[2])).toMatch(/^2026-01-20 /);
+    expect(String(tsRow[4])).toBe("2026-01-01 08:00:00");
+    expect(String(tsRow[5])).toBe("2026-03-01 23:59:59");
+  });
+
   test("date filters", async () => {
     const outcome = await executeCommand(
       'sum a if d >= date("2026-02-01")',
@@ -233,10 +257,10 @@ describe("tabulate", () => {
     expect(block.columns).toEqual(["s", "Freq.", "Percent", "Cum."]);
     // non-null values: alpha x2, gamma, it's, say "hi" -- sorted ascending
     expect(block.rows).toEqual([
-      ["alpha", 2, 40, 40],
-      ["gamma", 1, 20, 60],
-      ["it's", 1, 20, 80],
-      ['say "hi"', 1, 20, 100],
+      ["alpha", 2, "40.00", "40.00"],
+      ["gamma", 1, "20.00", "60.00"],
+      ["it's", 1, "20.00", "80.00"],
+      ['say "hi"', 1, "20.00", "100.00"],
     ]);
   });
 
@@ -248,8 +272,8 @@ describe("tabulate", () => {
     if (block.kind !== "table") return;
     // c >= 3 -> rows 3,4,5,6: select = y,y,y,z
     expect(block.rows).toEqual([
-      ["y", 3, 75, 75],
-      ["z", 1, 25, 100],
+      ["y", 3, "75.00", "75.00"],
+      ["z", 1, "25.00", "100.00"],
     ]);
   });
 
@@ -260,6 +284,30 @@ describe("tabulate", () => {
     const block = outcome.blocks[0];
     if (block.kind !== "table") return;
     expect(block.rows).toEqual([]);
+  });
+});
+
+describe("missing-value syntax", () => {
+  const countOf = async (command: string): Promise<string> => {
+    const outcome = await executeCommand(command, ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok" || outcome.blocks[0].kind !== "text") {
+      return "";
+    }
+    return outcome.blocks[0].text;
+  };
+
+  test("dot literal maps to null semantics", async () => {
+    expect(await countOf("count if a == .")).toBe("1");
+    expect(await countOf("count if a != .")).toBe("5");
+    // Stata idioms: < . is non-missing, >= . is missing
+    expect(await countOf("count if a < .")).toBe("5");
+    expect(await countOf("count if a >= .")).toBe("1");
+  });
+
+  test('empty string matches null (Stata string missing)', async () => {
+    expect(await countOf('count if s == ""')).toBe("1");
+    expect(await countOf('count if s != ""')).toBe("5");
   });
 });
 
@@ -443,10 +491,8 @@ describe("tab , missing", () => {
       ".",
     ]);
     expect(block.rows.map((r) => r[1])).toEqual([2, 1, 1, 1, 1]);
-    const cum = block.rows[4][3] as number;
-    expect(cum).toBeCloseTo(100, 10);
-    const firstPct = block.rows[0][2] as number;
-    expect(firstPct).toBeCloseTo(100 * (2 / 6), 10);
+    expect(block.rows[4][3]).toBe("100.00");
+    expect(block.rows[0][2]).toBe((100 * (2 / 6)).toFixed(2));
   });
 });
 
@@ -699,10 +745,11 @@ describe("Stata 19 cross-validation", () => {
     expect(tab.blocks[0].rows.length).toBe(stataReference.tabulate.rows.length);
     tab.blocks[0].rows.forEach((row, idx) => {
       const expected = stataReference.tabulate.rows[idx];
-      expect(row[0]).toBe(expected.value);
+      // numeric tab values stay numeric; percents display with 2 decimals
+      expect(row[0]).toBe(Number(expected.value));
       expect(row[1]).toBe(expected.freq);
-      expect(row[2]).toBeCloseTo(expected.percent, 12);
-      expect(row[3]).toBeCloseTo(expected.cum, 12);
+      expect(row[2]).toBe(expected.percent.toFixed(2));
+      expect(row[3]).toBe(expected.cum.toFixed(2));
     });
 
     const countAll = await executeCommand("count", ctx);

@@ -105,7 +105,7 @@ export const NumFormatPanel: React.FC<NumFormatPanelProps> = ({
         checked={opts.commas}
         disabled={opts.formatMethod === "toString" || opts.exponential}
         onChange={(event) => handleCommasChange(event)}
-        label="Use (,) as 1000s Separator"
+        label="Use (,) as 1000s Separator (from 10,000)"
       />
       <label className="bp4-label bp4-inline">
         Decimal Places

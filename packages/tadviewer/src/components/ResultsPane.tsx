@@ -25,8 +25,9 @@ export interface ResultsPaneProps {
 }
 
 /**
- * Format a cell for display: integers with grouping, fractional numbers
- * with up to 6 significant fractional digits, nulls as blank.
+ * Format a cell for display: integers with grouping from five digits up
+ * (no comma in years like 2024), fractional numbers with up to 7
+ * significant digits, nulls as blank.
  */
 export function formatCell(v: CellValue): string {
   if (v == null) {
@@ -34,7 +35,9 @@ export function formatCell(v: CellValue): string {
   }
   if (typeof v === "number") {
     if (Number.isInteger(v)) {
-      return v.toLocaleString("en-US", { useGrouping: true });
+      return Math.abs(v) >= 10000
+        ? v.toLocaleString("en-US", { useGrouping: true })
+        : String(v);
     }
     return String(Number(v.toPrecision(7)));
   }

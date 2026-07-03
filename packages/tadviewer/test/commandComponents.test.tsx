@@ -388,6 +388,55 @@ describe("ColumnSelector", () => {
       "b"
     );
   });
+
+  test("dragging the header handle widens the name column", () => {
+    const appState = mkAppState();
+    const stateRef = mkRef(appState);
+    const { container } = render(
+      <ColumnSelector
+        schema={schema}
+        viewParams={appState.viewState.viewParams}
+        stateRef={stateRef}
+      />
+    );
+    const tables = container.querySelectorAll("table");
+    const initialWidth = (tables[0] as HTMLElement).style.width;
+    const handle = screen.getByTestId("column-name-resize-handle");
+    fireEvent.mouseDown(handle, { clientX: 100 });
+    fireEvent.mouseMove(document, { clientX: 160 });
+    fireEvent.mouseUp(document);
+    const newTables = container.querySelectorAll("table");
+    const newWidth = (newTables[0] as HTMLElement).style.width;
+    expect(parseInt(newWidth, 10)).toBe(parseInt(initialWidth, 10) + 60);
+    // header and body tables stay in sync
+    expect((newTables[1] as HTMLElement).style.width).toBe(newWidth);
+  });
+
+  test("all-columns checkbox only affects search matches", () => {
+    const appState = mkAppState();
+    const stateRef = mkRef(appState);
+    render(
+      <ColumnSelector
+        schema={schema}
+        viewParams={appState.viewState.viewParams}
+        stateRef={stateRef}
+      />
+    );
+    // narrow to the single "has space" column, then untick "All Matching"
+    fireEvent.change(screen.getByTestId("column-search-input"), {
+      target: { value: "space" },
+    });
+    fireEvent.click(screen.getByTestId("column-select-all-check"));
+    expect(
+      mutableGet(stateRef).viewState.viewParams.displayColumns
+    ).toEqual(["a", "b", "s"]);
+
+    // ticking it again restores only the matching column
+    fireEvent.click(screen.getByTestId("column-select-all-check"));
+    expect(
+      mutableGet(stateRef).viewState.viewParams.displayColumns
+    ).toEqual(["a", "b", "s", "has space"]);
+  });
 });
 
 describe("Footer", () => {
@@ -414,6 +463,11 @@ describe("formatCell", () => {
     expect(formatCell(null)).toBe("");
     expect(formatCell(3)).toBe("3");
     expect(formatCell(1234567)).toBe("1,234,567");
+    // grouping starts at five digits: years stay comma-free
+    expect(formatCell(2024)).toBe("2024");
+    expect(formatCell(9999)).toBe("9999");
+    expect(formatCell(10000)).toBe("10,000");
+    expect(formatCell(-2024)).toBe("-2024");
     expect(formatCell(4.333333333333333)).toBe("4.333333");
     expect(formatCell(1.5275252316519468)).toBe("1.527525");
     expect(formatCell("text")).toBe("text");

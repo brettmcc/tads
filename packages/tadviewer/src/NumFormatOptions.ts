@@ -17,6 +17,20 @@ const defaultNumFormatOptionsProps: NumFormatOptionsProps = {
   formatMethod: "toString",
 };
 
+/**
+ * Grouping only kicks in at five digits: 4-digit values like years
+ * (2024) read better without a comma.
+ */
+export const GROUPING_MIN_MAGNITUDE = 10000;
+
+const wantsGrouping = (val: number | bigint): boolean => {
+  if (typeof val === "bigint") {
+    const absVal = val < BigInt(0) ? -val : val;
+    return absVal >= BigInt(GROUPING_MIN_MAGNITUDE);
+  }
+  return Math.abs(val) >= GROUPING_MIN_MAGNITUDE;
+};
+
 export class NumFormatOptions
   extends Immutable.Record(defaultNumFormatOptionsProps)
   implements NumFormatOptionsProps, FormatOptions
@@ -27,11 +41,13 @@ export class NumFormatOptions
   public readonly exponential!: boolean;
 
   getFormatter(): CellFormatter {
-    const fmtOpts = {
+    const mkFmtOpts = (grouping: boolean) => ({
       minimumFractionDigits: this.decimalPlaces,
       maximumFractionDigits: this.decimalPlaces,
-      useGrouping: this.commas,
-    };
+      useGrouping: grouping,
+    });
+    const groupedOpts = mkFmtOpts(true);
+    const ungroupedOpts = mkFmtOpts(false);
 
     const ff = (val?: any): string | undefined | null => {
       if (val == null) {
@@ -53,7 +69,11 @@ export class NumFormatOptions
           }
           ret = val.toLocaleString(undefined, expFmtOpts);
         } else {
-          ret = val.toLocaleString(undefined, fmtOpts);
+          const grouping = this.commas && wantsGrouping(val);
+          ret = val.toLocaleString(
+            undefined,
+            grouping ? groupedOpts : ungroupedOpts
+          );
         }
       }
       return ret;

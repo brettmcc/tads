@@ -18,8 +18,10 @@
  * Documented semantics:
  * - summarize: one row per requested variable, in command order. For
  *   numeric variables: N (non-null), mean, sd (stddev_samp), min, max,
- *   all cast to DOUBLE, computed in a single scan. Non-numeric
- *   variables report N with blank statistics.
+ *   all cast to DOUBLE, computed in a single scan. Date/timestamp
+ *   variables report mean/min/max as dates and sd in days (computed
+ *   over epoch seconds). Other variables report N with blank
+ *   statistics.
  * - summarize, detail: per numeric variable, Stata's detail panel:
  *   exact percentiles using Stata's order-statistic definition
  *   (average of adjacent order stats when N*p is an integer), the four
@@ -144,9 +146,17 @@ export interface BrowsePlan {
   sql: string;
 }
 
+/** how each summarize variable's statistics are computed and displayed */
+export type SummarizeVarKind = "numeric" | "date" | "other";
+
 export interface SummarizePlan {
   kind: "summarize";
   variables: string[];
+  /**
+   * per-variable stat kind, parallel to `variables`: numeric stats,
+   * date/time stats (mean/min/max as dates, sd in days), or N only
+   */
+  varKinds: SummarizeVarKind[];
   /** single wide aggregate query; one scan regardless of variable count */
   sql: string;
 }
@@ -171,6 +181,9 @@ export interface TabulatePlan {
   kind: "tabulate";
   variable: string;
   missing: boolean;
+  /** true when the tabulated column is numeric: values arrive un-cast so
+   * the executor can apply numeric display formatting */
+  numericValue: boolean;
   sql: string;
 }
 
@@ -517,17 +530,33 @@ function planSummarize(
   const from = fromClause(ctx);
   const where = whereClause(cmd.filter, ctx);
   const statCols: string[] = [];
+  const varKinds: SummarizeVarKind[] = [];
   cmd.variables.forEach((colId, idx) => {
     const q = ctx.dialect.quoteCol(colId);
     const ct = columnTypeOf(ctx, colId);
-    const numeric = colIsNumeric(ct);
+    const kind = summarizeVarKind(ctx, colId, ct);
+    varKinds.push(kind);
     statCols.push(`count(${q}) AS n_${idx}`);
-    if (numeric) {
+    if (kind === "numeric") {
       statCols.push(
         `CAST(avg(${q}) AS DOUBLE) AS mean_${idx}`,
         `CAST(stddev_samp(${q}) AS DOUBLE) AS sd_${idx}`,
         `CAST(min(${q}) AS DOUBLE) AS min_${idx}`,
         `CAST(max(${q}) AS DOUBLE) AS max_${idx}`
+      );
+    } else if (kind === "date") {
+      // date/time statistics over epoch seconds: mean back as a
+      // date/timestamp, spread reported in days
+      const epoch = `epoch(CAST(${q} AS TIMESTAMP))`;
+      const meanTs = `make_timestamp(CAST(avg(${epoch}) * 1000000 AS BIGINT))`;
+      const dateOnly =
+        ctx.schema.columnMetadata[colId].columnType === "DATE";
+      const meanExpr = dateOnly ? `CAST(${meanTs} AS DATE)` : meanTs;
+      statCols.push(
+        `CAST(${meanExpr} AS VARCHAR) AS mean_${idx}`,
+        `CAST(stddev_samp(${epoch}) / 86400.0 AS DOUBLE) AS sd_${idx}`,
+        `CAST(min(${q}) AS VARCHAR) AS min_${idx}`,
+        `CAST(max(${q}) AS VARCHAR) AS max_${idx}`
       );
     } else {
       statCols.push(
@@ -551,8 +580,31 @@ function planSummarize(
   return {
     kind: "summarize",
     variables: cmd.variables,
+    varKinds,
     sql: lines.join("\n"),
   };
+}
+
+/**
+ * Classify a summarize variable. DATE/TIMESTAMP-like columns get date
+ * statistics; TIME columns (which reltab also maps to kind "timestamp")
+ * are excluded because they cannot be cast to TIMESTAMP.
+ */
+function summarizeVarKind(
+  ctx: PlanContext,
+  colId: string,
+  ct: ColumnType
+): SummarizeVarKind {
+  if (colIsNumeric(ct)) {
+    return "numeric";
+  }
+  if (ct.kind === "timestamp") {
+    const sqlType = ctx.schema.columnMetadata[colId].columnType;
+    if (!sqlType.startsWith("TIME ") && sqlType !== "TIME") {
+      return "date";
+    }
+  }
+  return "other";
 }
 
 /**
@@ -674,6 +726,7 @@ function planTabulate(
   ctx: PlanContext
 ): TabulatePlan {
   const q = ctx.dialect.quoteCol(cmd.variable);
+  const numericValue = colIsNumeric(columnTypeOf(ctx, cmd.variable));
   const from = fromClause(ctx);
   const where = whereClause(
     cmd.filter,
@@ -681,7 +734,7 @@ function planTabulate(
     cmd.missing ? undefined : `${q} IS NOT NULL`
   );
   const lines = [
-    `SELECT CAST(${q} AS VARCHAR) AS value,`,
+    `SELECT ${numericValue ? q : `CAST(${q} AS VARCHAR)`} AS value,`,
     `       count(*) AS freq,`,
     `       100.0 * count(*) / sum(count(*)) OVER () AS percent,`,
     `       100.0 * sum(count(*)) OVER (ORDER BY ${q}) / sum(count(*)) OVER () AS cum_percent,`,
@@ -696,6 +749,7 @@ function planTabulate(
     kind: "tabulate",
     variable: cmd.variable,
     missing: cmd.missing,
+    numericValue,
     sql: lines.join("\n"),
   };
 }

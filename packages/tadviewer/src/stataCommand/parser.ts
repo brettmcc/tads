@@ -34,7 +34,7 @@
  *   boolPrim  := '(' orExpr ')' | comparison
  *   comparison := operand relop operand
  *   relop     := '==' | '=' | '!=' | '~=' | '<' | '<=' | '>' | '>='
- *   operand   := NUMBER | '-' NUMBER | STRING | 'null'
+ *   operand   := NUMBER | '-' NUMBER | STRING | 'null' | '.'
  *             | 'date' '(' STRING ')' | varname
  *
  * Precedence (tightest to loosest): parentheses, comparison, '&', '|'.
@@ -58,6 +58,13 @@
  * Notes:
  * - `=` is accepted as a synonym for `==`, and `~=` for `!=`.
  * - `null` may only appear with `==`/`!=`.
+ * - A bare `.` is Stata's numeric missing-value literal and maps to null:
+ *   `x == .` / `x != .` test missingness, and the Stata idioms `x < .`
+ *   (non-missing, since missing sorts above every value) and `x >= .`
+ *   (missing) are recognized. `x <= .` and `x > .` are rejected because
+ *   without extended missing values they are always/never true.
+ * - `x == ""` / `x != ""` follow Stata's string-missing convention: they
+ *   match (or exclude) both SQL NULL and the empty string.
  * - The keywords `if`, `null`, and `date` are contextual: a column whose
  *   name collides with one of them can always be referenced by backtick
  *   quoting (`if`, `null`, `date`).
@@ -605,7 +612,7 @@ class Parser {
   }
 
   private parseComparison(): ParsedExpr {
-    const lhs = this.parseOperand();
+    const lhsRes = this.parseOperandExt();
     const opTok = this.peek();
     if (opTok.type !== "op" || !isRelOpText(opTok.text)) {
       this.error(
@@ -616,8 +623,41 @@ class Parser {
       );
     }
     this.next();
-    const op = normalizeRelOp(opTok.text);
-    const rhs = this.parseOperand();
+    let op = normalizeRelOp(opTok.text);
+    const rhsRes = this.parseOperandExt();
+    let lhs = lhsRes.operand;
+    let rhs = rhsRes.operand;
+
+    // Stata numeric missing: normalize the '.' literal to a null
+    // comparison. Mirror first so the dot sits on the rhs, then map the
+    // missing-sorts-last idioms onto ==/!=.
+    let dotRhs = rhsRes.dot;
+    if (lhsRes.dot && !rhsRes.dot) {
+      [lhs, rhs] = [rhs, lhs];
+      op = MIRRORED_OP[op];
+      dotRhs = true;
+    }
+    if (dotRhs) {
+      switch (op) {
+        case "==":
+        case "!=":
+          break;
+        case "<":
+          // every non-missing value is below missing
+          op = "!=";
+          break;
+        case ">=":
+          // only missing is at or above missing
+          op = "==";
+          break;
+        default:
+          this.error(
+            `'${opTok.text} .' is always or never true; use == . (missing), != . or < . (non-missing), or >= . (missing)`,
+            opTok.pos
+          );
+      }
+    }
+
     if (lhs.kind === "null" || rhs.kind === "null") {
       if (op !== "==" && op !== "!=") {
         this.error(
@@ -626,7 +666,39 @@ class Parser {
         );
       }
     }
+
+    // Stata string missing: "" matches both SQL NULL and the empty string
+    const lhsEmpty = isEmptyString(lhs);
+    const rhsEmpty = isEmptyString(rhs);
+    if ((op === "==" || op === "!=") && lhsEmpty !== rhsEmpty) {
+      const subject = lhsEmpty ? rhs : lhs;
+      const empty: ParsedOperand = { kind: "string", value: "" };
+      const cmpNull: ParsedExpr = {
+        kind: "cmp",
+        op,
+        lhs: subject,
+        rhs: { kind: "null" },
+      };
+      const cmpEmpty: ParsedExpr = { kind: "cmp", op, lhs: subject, rhs: empty };
+      return op === "=="
+        ? { kind: "or", args: [cmpNull, cmpEmpty] }
+        : { kind: "and", args: [cmpNull, cmpEmpty] };
+    }
+
     return { kind: "cmp", op, lhs, rhs };
+  }
+
+  /**
+   * Parse an operand, tracking whether it was written as the bare '.'
+   * missing-value literal (which parses as a null literal).
+   */
+  private parseOperandExt(): { operand: ParsedOperand; dot: boolean } {
+    const tok = this.peek();
+    if (tok.type === "op" && tok.text === ".") {
+      this.next();
+      return { operand: { kind: "null" }, dot: true };
+    }
+    return { operand: this.parseOperand(), dot: false };
   }
 
   private parseOperand(): ParsedOperand {
@@ -702,6 +774,20 @@ class Parser {
       }
     }
   }
+}
+
+/** op with sides swapped: a OP b === b MIRRORED_OP[OP] a */
+const MIRRORED_OP: { [op in CmpOp]: CmpOp } = {
+  "==": "==",
+  "!=": "!=",
+  "<": ">",
+  "<=": ">=",
+  ">": "<",
+  ">=": "<=",
+};
+
+function isEmptyString(op: ParsedOperand): boolean {
+  return op.kind === "string" && op.value === "";
 }
 
 function parseNumber(tok: Token): number {

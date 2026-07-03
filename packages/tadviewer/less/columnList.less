@@ -8,6 +8,12 @@
   border-bottom: 1px solid #c0c0c0;
 }
 
+/* the shared .column-selector-table class no longer carries a fixed
+   width (the Columns panel sizes its tables inline); pin it here */
+.column-list .column-selector-table {
+  width: 298px;
+}
+
 .column-list-body {
   height: 150px;
   overflow-y: auto;

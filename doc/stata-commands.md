@@ -24,7 +24,7 @@ their text in the input for correction.
 | Command | Accepted form | Effect |
 | --- | --- | --- |
 | `browse` | `bro[wse] [varlist] [if expr]` | Show selected columns and an optional one-off filter in the main grid. |
-| `summarize` | `sum[marize] [varlist] [if expr] [, detail]` | N, mean, sample standard deviation, min, and max. `detail` adds exact percentiles, extremes, variance, skewness, kurtosis, and sum for numeric variables. |
+| `summarize` | `sum[marize] [varlist] [if expr] [, detail]` | N, mean, sample standard deviation, min, and max. Date/timestamp variables report mean/min/max as dates and the standard deviation in days. `detail` adds exact percentiles, extremes, variance, skewness, kurtosis, and sum for numeric variables. |
 | `tabulate` | `tab[ulate] var [if expr] [, missing]` | One-way frequencies, percent, and cumulative percent. Nulls are excluded unless `missing` is given. |
 | `codebook` | `codebook [varlist]` | Type, N, missing, distinct, and min/max or top values. |
 | `describe` | `des[cribe] [varlist]` | Observation count plus variable names and SQL types. |
@@ -89,7 +89,7 @@ andExpr    := boolPrim ( '&' boolPrim )*
 boolPrim   := '(' orExpr ')' | comparison
 comparison := operand relop operand
 relop      := '==' | '=' | '!=' | '~=' | '<' | '<=' | '>' | '>='
-operand    := NUMBER | '-' NUMBER | STRING | 'null'
+operand    := NUMBER | '-' NUMBER | STRING | 'null' | '.'
             | 'date' '(' STRING ')' | varname
 ```
 
@@ -98,7 +98,14 @@ Parentheses bind first, followed by comparisons, `&`, then `|`.
 - `=` is a synonym for `==`; `~=` is a synonym for `!=`.
 - String literals may use single or double quotes. Double the delimiter to
   escape it: `'it''s'`, `"say ""hi"""`.
-- Null checks must use `x == null` or `x != null`.
+- Null checks may use `x == null` / `x != null` or the Stata missing-value
+  forms below.
+- A bare `.` is the numeric missing-value literal: `x == .` and `x != .`
+  test missingness, and the Stata idioms `x < .` (non-missing) and
+  `x >= .` (missing) are recognized. `x <= .` and `x > .` are rejected
+  (without extended missing values they are always/never true).
+- `x == ""` and `x != ""` follow Stata's string-missing convention: they
+  match (or exclude) both null and the empty string.
 - Date literals use `date("YYYY-MM-DD")` or
   `date("YYYY-MM-DD HH:MM[:SS]")`. A `T` separator is also accepted.
 - Column-to-column comparisons are supported.
@@ -113,7 +120,9 @@ while variance and standard deviation use sample definitions. The fixture
 results are cross-validated against Stata 19.
 
 `tabulate` returns at most 1,000 groups, with percentages computed before the
-limit. `codebook` returns at most 10 top values per categorical variable.
+limit and displayed with two decimals. Numeric values keep their numeric
+display formatting (grouping only from 10,000 up, so years read cleanly).
+`codebook` returns at most 10 top values per categorical variable.
 `list` returns at most 200 rows. Histogram bins default to
 `round(min(sqrt(N), 10*log10(N)))`.
 
@@ -126,7 +135,8 @@ sum price*, detail
 tab rep78, missing
 describe make price*
 list make price if price >= 5000
-count if price != null
+count if price != .
+drop if name == ""
 order make price, last
 gsort -price make
 keep if year >= 2020
@@ -145,5 +155,6 @@ files are opened in `READ_ONLY` mode.
 Commands operate on one loaded dataset at a time. Pivot groups do not change
 command results. DECIMAL summaries use double precision. SQL null comparison
 semantics differ from Stata numeric missing values: null satisfies neither an
-ordinary comparison nor its logical opposite, so use explicit null checks when
-that distinction matters.
+ordinary comparison nor its logical opposite (`drop if x > 2` does not drop
+rows with missing x), so use explicit missingness checks (`== .`, `!= .`,
+`== null`) when that distinction matters.

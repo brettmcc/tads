@@ -225,12 +225,28 @@ export const toggleShown = (
     vpUpdate((viewParams) => viewParams.toggleShown(cid))
   );
 };
-export const toggleAllShown = (stateRef: StateRef<AppState>): void => {
+/**
+ * Toggle visibility of a set of columns at once (the Columns panel's
+ * "All Columns" checkbox). `targetColumns` is the set the checkbox
+ * governs — all columns normally, or just the matches while the panel's
+ * search filter is active. If every target is shown, hide them all;
+ * otherwise show the missing ones (columns outside the target set are
+ * left untouched).
+ */
+export const toggleAllShown = (
+  targetColumns: string[],
+  stateRef: StateRef<AppState>
+): void => {
   update(stateRef, (s) => {
-    const schema = s.viewState.baseSchema;
     const viewParams = s.viewState.viewParams;
-    const allShown = schema.columns.length === viewParams.displayColumns.length;
-    const nextDisplayColumns = allShown ? [] : schema.columns;
+    const shown = new Set(viewParams.displayColumns);
+    const allShown = targetColumns.every((cid) => shown.has(cid));
+    const targetSet = new Set(targetColumns);
+    const nextDisplayColumns = allShown
+      ? viewParams.displayColumns.filter((cid) => !targetSet.has(cid))
+      : viewParams.displayColumns.concat(
+          targetColumns.filter((cid) => !shown.has(cid))
+        );
     return vpUpdate(
       (viewParams) =>
         viewParams.set("displayColumns", nextDisplayColumns) as ViewParams

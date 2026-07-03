@@ -5,8 +5,9 @@
 
 .column-selector-table {
   background-color: #ffffff;
+  /* column widths come from the <colgroup>; table width is set inline
+     (it grows when the name column is drag-resized) */
   table-layout: fixed;
-  width: 298px;
   margin-bottom: 0;
 }
 
@@ -24,6 +25,12 @@
   font-size: 8.5pt;
 }
 
+/* horizontal scroll container shared by header and body tables so they
+   stay aligned when the name column is widened past the sidebar */
+.column-selector-scroll {
+  overflow-x: auto;
+}
+
 .column-selector-header {
   border-bottom: 1px solid #c0c0c0;
 }
@@ -35,18 +42,12 @@
 }
 
 .column-selector .col-colName {
-  width: 42%;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
 }
 
-.column-selector .col-colType {
-  width: 23%;
-}
-
 .column-selector .col-check {
-  width: 12%;
   text-align: center;
   padding-left: 2px;
   padding-right: 2px;
@@ -60,6 +61,24 @@ table.column-selector-table td {
 .column-selector-th {
   border-bottom: 0;
 }
+
+.column-selector-th.col-colName {
+  position: relative;
+}
+
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.col-resize-handle:hover {
+  background-color: #b8b8b8;
+}
+
 .column-selector thead {
   border-bottom: 1px solid #c0c0c0;
 }
@@ -75,4 +94,7 @@ table.column-selector-table td {
 .col-colName-all {
   font-style: italic;
   font-weight: bolder;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }

@@ -18,6 +18,13 @@ const shortenTypeName = (tn: string): string => {
   return tn === "integer" ? "int" : tn;
 };
 
+// default/limit widths (px) for the resizable column-name column
+const NAME_COL_DEFAULT_WIDTH = 125;
+const NAME_COL_MIN_WIDTH = 80;
+const NAME_COL_MAX_WIDTH = 600;
+const TYPE_COL_WIDTH = 69;
+const CHECK_COL_WIDTH = 36;
+
 export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   schema,
   viewParams,
@@ -25,11 +32,32 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   stateRef,
 }) => {
   const [searchText, setSearchText] = useState("");
+  const [nameColWidth, setNameColWidth] = useState(NAME_COL_DEFAULT_WIDTH);
 
   const handleRowClick = (cid: string) => {
     if (onColumnClick) {
       onColumnClick(cid);
     }
+  };
+
+  // drag on the header handle resizes the name column; the tables grow
+  // and scroll horizontally inside .column-selector-scroll
+  const startNameColResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = nameColWidth;
+    const onMove = (ev: MouseEvent) => {
+      const w = startWidth + ev.clientX - startX;
+      setNameColWidth(
+        Math.min(NAME_COL_MAX_WIDTH, Math.max(NAME_COL_MIN_WIDTH, w))
+      );
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   };
 
   const renderColumnRow = (cid: string) => {
@@ -39,7 +67,6 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
     const isPivot = viewParams.vpivots.includes(cid);
     const isSort =
       viewParams.sortKey.findIndex((entry) => entry[0] === cid) !== -1;
-    const tooltipContent = <span>{displayName}</span>;
     return (
       <tr key={cid} data-testid="column-selector-row">
         <td className="col-colName" onClick={(e) => handleRowClick(cid)}>
@@ -79,21 +106,32 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
     );
   };
 
-  // render row with checkboxes to select / deselect all items:
-  const renderAllRow = () => {
-    const allShown = schema.columns.length === viewParams.displayColumns.length;
-    const someShown = viewParams.displayColumns.length > 0;
+  /**
+   * row with checkboxes to select / deselect all listed items; while a
+   * search filter is active this only governs the matching columns
+   */
+  const renderAllRow = (targetColumns: string[]) => {
+    const shown = new Set(viewParams.displayColumns);
+    const allShown =
+      targetColumns.length > 0 &&
+      targetColumns.every((cid) => shown.has(cid));
+    const someShown = targetColumns.some((cid) => shown.has(cid));
+    const filtered = targetColumns.length !== schema.columns.length;
     return (
       <tr className="all-row">
-        <td className="col-colName-all">All Columns</td>
+        <td className="col-colName-all">
+          {filtered ? "All Matching" : "All Columns"}
+        </td>
         <td className="col-colType" />
         <td className="col-check">
           <IndeterminateCheckbox
             className="colSel-check"
             type="checkbox"
-            title="Show all columns"
-            /* ref={"showCheckbox-all"} */
-            onChange={() => actions.toggleAllShown(stateRef)}
+            data-testid="column-select-all-check"
+            title={
+              filtered ? "Show all matching columns" : "Show all columns"
+            }
+            onChange={() => actions.toggleAllShown(targetColumns, stateRef)}
             checked={allShown}
             indeterminate={!allShown && someShown}
           />
@@ -124,8 +162,19 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   columnIds.sort((cid1, cid2) =>
     schema.displayName(cid1).localeCompare(schema.displayName(cid2))
   );
-  const allRow = renderAllRow();
+  const allRow = renderAllRow(columnIds);
   const columnRows = columnIds.map((cid) => renderColumnRow(cid));
+  const tableWidth = nameColWidth + TYPE_COL_WIDTH + 3 * CHECK_COL_WIDTH;
+  const tableStyle = { width: tableWidth };
+  const colGroup = (
+    <colgroup>
+      <col style={{ width: nameColWidth }} />
+      <col style={{ width: TYPE_COL_WIDTH }} />
+      <col style={{ width: CHECK_COL_WIDTH }} />
+      <col style={{ width: CHECK_COL_WIDTH }} />
+      <col style={{ width: CHECK_COL_WIDTH }} />
+    </colgroup>
+  );
   return (
     <div className="column-selector">
       <div className="column-selector-search">
@@ -138,24 +187,42 @@ export const ColumnSelector: React.FC<ColumnSelectorProps> = ({
           data-testid="column-search-input"
         />
       </div>
-      <div className="column-selector-header">
-        <table className="table table-condensed bp4-interactive column-selector-table">
-          <thead>
-            <tr>
-              <th className="column-selector-th col-colName">Column</th>
-              <th className="column-selector-th col-colType" />
-              <th className="column-selector-th col-check">Show</th>
-              <th className="column-selector-th col-check">Pivot</th>
-              <th className="column-selector-th col-check">Sort</th>
-            </tr>
-          </thead>
-          <tbody>{allRow}</tbody>
-        </table>
-      </div>
-      <div className="column-selector-body">
-        <table className="table table-condensed table-hover column-selector-table">
-          <tbody>{columnRows}</tbody>
-        </table>
+      <div className="column-selector-scroll">
+        <div className="column-selector-header">
+          <table
+            className="table table-condensed bp4-interactive column-selector-table"
+            style={tableStyle}
+          >
+            {colGroup}
+            <thead>
+              <tr>
+                <th className="column-selector-th col-colName">
+                  Column
+                  <div
+                    className="col-resize-handle"
+                    title="Drag to resize the column-name column"
+                    data-testid="column-name-resize-handle"
+                    onMouseDown={startNameColResize}
+                  />
+                </th>
+                <th className="column-selector-th col-colType" />
+                <th className="column-selector-th col-check">Show</th>
+                <th className="column-selector-th col-check">Pivot</th>
+                <th className="column-selector-th col-check">Sort</th>
+              </tr>
+            </thead>
+            <tbody>{allRow}</tbody>
+          </table>
+        </div>
+        <div className="column-selector-body">
+          <table
+            className="table table-condensed table-hover column-selector-table"
+            style={tableStyle}
+          >
+            {colGroup}
+            <tbody>{columnRows}</tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -204,6 +204,71 @@ describe("if expressions", () => {
     );
   });
 
+  test("dot missing-value comparisons map to null", () => {
+    const eq = parseCommand("bro if a == .") as any;
+    expect(eq.filter).toEqual({
+      kind: "cmp",
+      op: "==",
+      lhs: { kind: "var", ref: v("a", 7) },
+      rhs: { kind: "null" },
+    });
+    // Stata idioms: < . is non-missing, >= . is missing
+    expect((parseCommand("bro if a != .") as any).filter.op).toBe("!=");
+    expect((parseCommand("bro if a < .") as any).filter).toEqual({
+      kind: "cmp",
+      op: "!=",
+      lhs: { kind: "var", ref: v("a", 7) },
+      rhs: { kind: "null" },
+    });
+    expect((parseCommand("bro if a >= .") as any).filter.op).toBe("==");
+    // mirrored: dot on the lhs
+    expect((parseCommand("bro if . == a") as any).filter).toEqual({
+      kind: "cmp",
+      op: "==",
+      lhs: { kind: "var", ref: v("a", 12) },
+      rhs: { kind: "null" },
+    });
+    expect((parseCommand("bro if . > a") as any).filter.op).toBe("!=");
+    expect(() => parseCommand("bro if a > .")).toThrow(
+      "always or never true"
+    );
+    expect(() => parseCommand("bro if a <= .")).toThrow(
+      "always or never true"
+    );
+  });
+
+  test("empty string matches Stata string missing (null or '')", () => {
+    const eq = parseCommand(`bro if s == ""`) as any;
+    expect(eq.filter).toEqual({
+      kind: "or",
+      args: [
+        {
+          kind: "cmp",
+          op: "==",
+          lhs: { kind: "var", ref: v("s", 7) },
+          rhs: { kind: "null" },
+        },
+        {
+          kind: "cmp",
+          op: "==",
+          lhs: { kind: "var", ref: v("s", 7) },
+          rhs: { kind: "string", value: "" },
+        },
+      ],
+    });
+    const ne = parseCommand(`bro if s != ""`) as any;
+    expect(ne.filter.kind).toBe("and");
+    expect(ne.filter.args.map((a: any) => a.op)).toEqual(["!=", "!="]);
+    // inequalities with "" stay ordinary comparisons
+    const lt = parseCommand(`bro if s < ""`) as any;
+    expect(lt.filter).toEqual({
+      kind: "cmp",
+      op: "<",
+      lhs: { kind: "var", ref: v("s", 7) },
+      rhs: { kind: "string", value: "" },
+    });
+  });
+
   test("string literals with embedded quotes", () => {
     const sq = parseCommand(`bro if s == 'it''s'`) as any;
     expect(sq.filter.rhs).toEqual({ kind: "string", value: "it's" });

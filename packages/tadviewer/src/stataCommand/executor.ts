@@ -166,14 +166,28 @@ async function runSummarize(
   const res = await ctx.runReadOnlySql(plan.sql);
   // one wide row of per-variable aggregates; reshape to a row per variable
   const wide: Row = res.rows[0] ?? {};
-  const rows = plan.variables.map((variable, idx): CellValue[] => [
-    variable,
-    asNumber(wide[`n_${idx}`]),
-    asNumber(wide[`mean_${idx}`]),
-    asNumber(wide[`sd_${idx}`]),
-    asNumber(wide[`min_${idx}`]),
-    asNumber(wide[`max_${idx}`]),
-  ]);
+  const rows = plan.variables.map((variable, idx): CellValue[] => {
+    if (plan.varKinds[idx] === "date") {
+      // mean/min/max arrive as date/timestamp strings; sd is in days
+      const sdDays = asNumber(wide[`sd_${idx}`]);
+      return [
+        variable,
+        asNumber(wide[`n_${idx}`]),
+        asString(wide[`mean_${idx}`]),
+        sdDays === null ? null : `${Number(sdDays.toPrecision(6))} days`,
+        asString(wide[`min_${idx}`]),
+        asString(wide[`max_${idx}`]),
+      ];
+    }
+    return [
+      variable,
+      asNumber(wide[`n_${idx}`]),
+      asNumber(wide[`mean_${idx}`]),
+      asNumber(wide[`sd_${idx}`]),
+      asNumber(wide[`min_${idx}`]),
+      asNumber(wide[`max_${idx}`]),
+    ];
+  });
   return [
     {
       kind: "table",
@@ -279,12 +293,22 @@ async function runTabulate(
   ctx: CommandExecutionContext
 ): Promise<ResultBlock[]> {
   const res = await ctx.runReadOnlySql(plan.sql);
+  // percentages always display with two decimals (like Stata), so they
+  // are formatted here rather than left to generic numeric display
+  const pct = (v: unknown): CellValue => {
+    const n = asNumber(v);
+    return n === null ? null : n.toFixed(2);
+  };
   const rows = res.rows.map((row: Row): CellValue[] => [
     // Stata renders missing as "."
-    row.value == null ? "." : asString(row.value),
+    row.value == null
+      ? "."
+      : plan.numericValue
+      ? asNumber(row.value)
+      : asString(row.value),
     asNumber(row.freq),
-    asNumber(row.percent),
-    asNumber(row.cum_percent),
+    pct(row.percent),
+    pct(row.cum_percent),
   ]);
   const total = rows.reduce(
     (acc, r) => acc + ((r[1] as number | null) ?? 0),

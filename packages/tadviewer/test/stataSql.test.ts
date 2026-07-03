@@ -81,6 +81,14 @@ describe("filter expression SQL", () => {
     ["sum if a == null", `"a" IS NULL`],
     ["sum if a != null", `"a" IS NOT NULL`],
     ["sum if null == a", `"a" IS NULL`],
+    // Stata numeric missing '.' maps to null; < . / >= . idioms included
+    ["sum if a == .", `"a" IS NULL`],
+    ["sum if a != .", `"a" IS NOT NULL`],
+    ["sum if a < .", `"a" IS NOT NULL`],
+    ["sum if a >= .", `"a" IS NULL`],
+    // Stata string missing: "" matches SQL NULL and the empty string
+    [`sum if s == ""`, `"s" IS NULL OR "s" = ''`],
+    [`sum if s != ""`, `"s" IS NOT NULL AND "s" <> ''`],
     [`sum if d >= date("2026-06-12")`, `"d" >= DATE '2026-06-12'`],
     [
       `sum if ts < date("2026-06-12T10:30:00")`,
@@ -131,6 +139,32 @@ describe("summarize SQL", () => {
     expect(p.sql).toContain(`count("quote""name") AS n_0`);
     expect(p.variables).toEqual(['quote"name']);
   });
+
+  test("date/timestamp variables get date statistics", () => {
+    const p = plan("sum d ts") as SummarizePlan;
+    expect(p.varKinds).toEqual(["date", "date"]);
+    expect(p.sql).toBe(
+      [
+        'SELECT count("d") AS n_0,',
+        '       CAST(CAST(make_timestamp(CAST(avg(epoch(CAST("d" AS TIMESTAMP))) * 1000000 AS BIGINT)) AS DATE) AS VARCHAR) AS mean_0,',
+        '       CAST(stddev_samp(epoch(CAST("d" AS TIMESTAMP))) / 86400.0 AS DOUBLE) AS sd_0,',
+        '       CAST(min("d") AS VARCHAR) AS min_0,',
+        '       CAST(max("d") AS VARCHAR) AS max_0,',
+        '       count("ts") AS n_1,',
+        '       CAST(make_timestamp(CAST(avg(epoch(CAST("ts" AS TIMESTAMP))) * 1000000 AS BIGINT)) AS VARCHAR) AS mean_1,',
+        '       CAST(stddev_samp(epoch(CAST("ts" AS TIMESTAMP))) / 86400.0 AS DOUBLE) AS sd_1,',
+        '       CAST(min("ts") AS VARCHAR) AS min_1,',
+        '       CAST(max("ts") AS VARCHAR) AS max_1',
+        BASE_FROM,
+      ].join("\n")
+    );
+  });
+
+  test("string variables still report N with blank statistics", () => {
+    const p = plan("sum s") as SummarizePlan;
+    expect(p.varKinds).toEqual(["other"]);
+    expect(p.sql).toContain("CAST(NULL AS DOUBLE) AS mean_0");
+  });
 });
 
 describe("tabulate SQL", () => {
@@ -155,6 +189,13 @@ describe("tabulate SQL", () => {
   test("unfiltered tab still excludes nulls", () => {
     const p = plan("tab s") as TabulatePlan;
     expect(p.sql).toContain(`WHERE "s" IS NOT NULL`);
+    expect(p.numericValue).toBe(false);
+  });
+
+  test("numeric variables are not cast to VARCHAR", () => {
+    const p = plan("tab a") as TabulatePlan;
+    expect(p.numericValue).toBe(true);
+    expect(p.sql).toContain(`SELECT "a" AS value,`);
   });
 });
 
