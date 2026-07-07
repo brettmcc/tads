@@ -33,13 +33,16 @@ import { formatCell } from "../src/components/ResultsPane";
 import { ViewParams } from "../src/ViewParams";
 import { ViewState } from "../src/ViewState";
 
-function mkSchema(): Schema {
-  const cols: Array<[string, string]> = [
+type ColSpec = [string, string];
+
+function mkSchema(
+  cols: ColSpec[] = [
     ["a", "INTEGER"],
     ["b", "DOUBLE"],
     ["s", "VARCHAR"],
     ["has space", "INTEGER"],
-  ];
+  ]
+): Schema {
   const cmMap: ColumnMetaMap = {};
   for (const [colId, columnType] of cols) {
     cmMap[colId] = { displayName: colId, columnType };
@@ -75,9 +78,9 @@ function mkFakeDbc(): DataSourceConnection {
   return fake as DataSourceConnection;
 }
 
-function mkAppState(): AppState {
+function mkAppState(sch: Schema = schema): AppState {
   const viewParams = new ViewParams({
-    displayColumns: schema.columns.slice(),
+    displayColumns: sch.columns.slice(),
   });
   const viewState = new ViewState({
     dbc: mkFakeDbc(),
@@ -86,7 +89,7 @@ function mkAppState(): AppState {
       path: ["t"],
     },
     baseQuery: tableQuery("t"),
-    baseSchema: schema,
+    baseSchema: sch,
     viewParams,
     initialViewParams: viewParams,
   });
@@ -107,8 +110,8 @@ const Harness: React.FunctionComponent<
   </div>
 );
 
-function renderHarness(): StateRef<AppState> {
-  const stateRef = mkRef(mkAppState());
+function renderHarness(sch: Schema = schema): StateRef<AppState> {
+  const stateRef = mkRef(mkAppState(sch));
   const [App] = refContainer<AppState, HarnessProps>(stateRef, Harness);
   render(<App />);
   return stateRef;
@@ -235,6 +238,69 @@ describe("CommandBar", () => {
     input.setSelectionRange(input.value.length, input.value.length);
     fireEvent.keyDown(input, { key: "Tab" });
     expect(input.value).toBe("s");
+  });
+
+  test("Tab with multiple matches opens a completion menu", () => {
+    const multiSchema = mkSchema([
+      ["price", "DOUBLE"],
+      ["price_usd", "DOUBLE"],
+      ["qty", "INTEGER"],
+    ]);
+    renderHarness(multiSchema);
+    const input = typeCommand("sum pr");
+    input.setSelectionRange(input.value.length, input.value.length);
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    // input is untouched until a candidate is accepted
+    expect(input.value).toBe("sum pr");
+    const items = screen.getAllByTestId("command-completion-item");
+    expect(items.map((it) => it.textContent)).toEqual([
+      "price",
+      "price_usd",
+    ]);
+    expect(items[0].className).toContain("selected");
+
+    // arrow keys move the highlight instead of navigating history
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(
+      screen.getAllByTestId("command-completion-item")[1].className
+    ).toContain("selected");
+
+    // Enter accepts the highlighted candidate and closes the menu
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("sum price_usd");
+    expect(screen.queryByTestId("command-completion-menu")).toBeNull();
+  });
+
+  test("Escape dismisses the completion menu without changing input", () => {
+    const multiSchema = mkSchema([
+      ["price", "DOUBLE"],
+      ["price_usd", "DOUBLE"],
+    ]);
+    renderHarness(multiSchema);
+    const input = typeCommand("sum pr");
+    input.setSelectionRange(input.value.length, input.value.length);
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(screen.getByTestId("command-completion-menu")).not.toBeNull();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByTestId("command-completion-menu")).toBeNull();
+    expect(input.value).toBe("sum pr");
+  });
+
+  test("clicking a completion menu item inserts it", () => {
+    const multiSchema = mkSchema([
+      ["price", "DOUBLE"],
+      ["price_usd", "DOUBLE"],
+    ]);
+    renderHarness(multiSchema);
+    const input = typeCommand("sum pr");
+    input.setSelectionRange(input.value.length, input.value.length);
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    fireEvent.mouseDown(screen.getAllByTestId("command-completion-item")[1]);
+    expect(input.value).toBe("sum price_usd");
+    expect(screen.queryByTestId("command-completion-menu")).toBeNull();
   });
 
   test("Break interrupts the active connection", async () => {

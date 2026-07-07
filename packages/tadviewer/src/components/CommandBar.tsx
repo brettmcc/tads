@@ -3,7 +3,7 @@
  * up/down command history, and a toggle for the results pane.
  */
 import * as React from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
 import { AppState } from "../AppState";
@@ -72,12 +72,17 @@ function completionSpan(
   };
 }
 
-interface CompletionCycle {
+/**
+ * An open variable-completion menu: the input text surrounding the
+ * token being completed, the candidate variables, and the highlighted
+ * candidate. The menu is opened by Tab when several variables match;
+ * up/down move the highlight, Tab/Enter accept it, Escape dismisses.
+ */
+interface CompletionMenu {
   before: string;
   after: string;
   matches: string[];
   index: number;
-  rendered: string;
 }
 
 export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
@@ -91,7 +96,14 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
   const [histIndex, setHistIndex] = useState<number | null>(null);
   const draftRef = useRef("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const completionRef = useRef<CompletionCycle | null>(null);
+  const [completionMenu, setCompletionMenu] =
+    useState<CompletionMenu | null>(null);
+  const selectedItemRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    // optional call: scrollIntoView is absent under jsdom
+    selectedItemRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [completionMenu]);
 
   const { commandRunning, commandResults } = appState;
   const history = useMemo(
@@ -126,7 +138,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
       setInputValue("");
     }
     setHistIndex(null);
-    completionRef.current = null;
+    setCompletionMenu(null);
   };
 
   const navigateHistory = (delta: -1 | 1) => {
@@ -154,7 +166,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     }
     setHistIndex(nextIndex);
     setInputValue(history[nextIndex]);
-    completionRef.current = null;
+    setCompletionMenu(null);
   };
 
   const recallLastCommand = () => {
@@ -165,24 +177,31 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     const nextIndex = history.length - 1;
     setHistIndex(nextIndex);
     setInputValue(history[nextIndex]);
-    completionRef.current = null;
+    setCompletionMenu(null);
   };
 
-  const completeVariable = (caret: number): boolean => {
-    const previous = completionRef.current;
-    if (
-      previous !== null &&
-      inputValue === previous.before + previous.rendered + previous.after &&
-      caret === previous.before.length + previous.rendered.length
-    ) {
-      const index = (previous.index + 1) % previous.matches.length;
-      const rendered = formatVariableForCommand(previous.matches[index]);
-      completionRef.current = { ...previous, index, rendered };
-      const nextValue = previous.before + rendered + previous.after;
-      setInputWithCaret(nextValue, previous.before.length + rendered.length);
-      return true;
-    }
+  const acceptCompletion = (menu: CompletionMenu, index: number) => {
+    const rendered = formatVariableForCommand(menu.matches[index]);
+    setInputWithCaret(
+      menu.before + rendered + menu.after,
+      menu.before.length + rendered.length
+    );
+    setCompletionMenu(null);
+  };
 
+  const moveCompletionSelection = (menu: CompletionMenu, delta: -1 | 1) => {
+    const count = menu.matches.length;
+    setCompletionMenu({
+      ...menu,
+      index: (menu.index + delta + count) % count,
+    });
+  };
+
+  /**
+   * Tab pressed with no menu open: a unique match completes in place;
+   * several matches open the dropdown menu to pick from.
+   */
+  const completeVariable = (caret: number): boolean => {
     const span = completionSpan(inputValue, caret);
     if (span === null || span.prefix.length === 0) {
       return false;
@@ -196,21 +215,40 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     if (matches.length === 0) {
       return false;
     }
-    const rendered = formatVariableForCommand(matches[0]);
     const before = inputValue.slice(0, span.start);
     const after = inputValue.slice(span.end);
-    completionRef.current = {
-      before,
-      after,
-      matches,
-      index: 0,
-      rendered,
-    };
-    setInputWithCaret(before + rendered + after, before.length + rendered.length);
+    if (matches.length === 1) {
+      const rendered = formatVariableForCommand(matches[0]);
+      setInputWithCaret(
+        before + rendered + after,
+        before.length + rendered.length
+      );
+      return true;
+    }
+    setCompletionMenu({ before, after, matches, index: 0 });
     return true;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (completionMenu !== null) {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        moveCompletionSelection(completionMenu, e.key === "ArrowUp" ? -1 : 1);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        acceptCompletion(completionMenu, completionMenu.index);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setCompletionMenu(null);
+        return;
+      }
+      // any other key: fall through with the menu dismissed
+      setCompletionMenu(null);
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       runCommand();
@@ -238,11 +276,43 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
       </div>
     );
 
+  const completionMenuElem =
+    completionMenu === null ? null : (
+      <ul
+        className="command-completion-menu"
+        data-testid="command-completion-menu"
+        role="listbox"
+      >
+        {completionMenu.matches.map((column, i) => (
+          <li
+            key={column}
+            ref={i === completionMenu.index ? selectedItemRef : null}
+            className={
+              i === completionMenu.index
+                ? "command-completion-item selected"
+                : "command-completion-item"
+            }
+            data-testid="command-completion-item"
+            role="option"
+            aria-selected={i === completionMenu.index}
+            // mousedown rather than click so the input keeps focus
+            onMouseDown={(e) => {
+              e.preventDefault();
+              acceptCompletion(completionMenu, i);
+            }}
+          >
+            {column}
+          </li>
+        ))}
+      </ul>
+    );
+
   return (
     <div className="command-bar-container">
       {errorIndicator}
       <div className="command-bar">
         <span className="command-prompt">.</span>
+        {completionMenuElem}
         <input
           ref={inputRef}
           className="command-input"
@@ -257,8 +327,9 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
             setInputValue(e.target.value);
             setLastError(null);
             setHistIndex(null);
-            completionRef.current = null;
+            setCompletionMenu(null);
           }}
+          onBlur={() => setCompletionMenu(null)}
           onKeyDown={handleKeyDown}
         />
         <Button
