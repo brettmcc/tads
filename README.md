@@ -68,6 +68,94 @@ npm run build      # builds reltab, aggtree, drivers, tadviewer, tad-app
 npm start -- data.parquet   # launch the app on a file
 ```
 
+## Installing Tads
+
+Installers are produced with [electron-builder](https://www.electron.build/)
+and land in `packages/tad-app/dist/`. They are not checked into the
+repository (a Windows installer alone is ~190 MB) — build them from
+source with the commands below, or download one from the project's
+GitHub Releases page if a release has been published.
+
+electron-builder can only build installers for the OS it runs on
+(macOS installers in particular require a Mac), so build each
+platform's installer on that platform. On every platform the build
+prerequisites are the same: **Node >= 24** and npm >= 10, then:
+
+```sh
+npm install
+npm run build
+```
+
+### Windows 11 (and Windows 10)
+
+```powershell
+npm run dist:win   # -> packages\tad-app\dist\Tads Setup <version>.exe
+```
+
+Double-click `Tads Setup <version>.exe` and follow the wizard (it is an
+NSIS installer; you can pick the install directory). For an unattended
+install — e.g. provisioning a lab machine — run it with the NSIS silent
+flag:
+
+```powershell
+& ".\Tads Setup 0.14.0.exe" /S
+```
+
+The build is unsigned, so SmartScreen may warn on first run: click
+**More info → Run anyway**. The installer registers Tads as an
+**Open With...** handler for `.csv`, `.tsv`, `.parquet`, `.sqlite`,
+`.duckdb`, and `.tad` files and adds a Start-menu entry. Uninstall from
+**Settings → Apps** like any other application.
+
+### macOS (Apple Silicon or Intel)
+
+On a Mac:
+
+```sh
+npm run dist:mac      # -> packages/tad-app/dist/Tads-<version>.dmg (+ .zip)
+npm run dist-arm64 -w packages/tad-app   # explicit arm64 build if needed
+```
+
+Open the `.dmg` and drag **Tads** into **Applications**. The build is
+not code-signed or notarized, so Gatekeeper will block the first
+launch; either right-click the app and choose **Open**, or clear the
+quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Tads.app
+```
+
+To launch Tads from the terminal (`tad somefile.parquet`), symlink the
+bundled launcher script onto your PATH:
+
+```sh
+ln -s "/Applications/Tads.app/Contents/Resources/tad.sh" /usr/local/bin/tad
+```
+
+### Linux (Debian/Ubuntu, Fedora/RHEL, other)
+
+On a Linux machine:
+
+```sh
+npm run dist:linux    # -> .deb, .rpm and .tar.bz2 in packages/tad-app/dist/
+```
+
+Install the package for your distribution:
+
+```sh
+sudo apt install ./packages/tad-app/dist/tads_<version>_amd64.deb   # Debian/Ubuntu
+sudo dnf install ./packages/tad-app/dist/tads-<version>.x86_64.rpm  # Fedora/RHEL
+```
+
+or unpack the `.tar.bz2` anywhere and run the `tads` binary inside it.
+
+### Running without installing
+
+On any platform, `npm run pack` produces an unpacked, runnable app
+(e.g. `packages/tad-app/dist/win-unpacked/Tads.exe` on Windows) —
+useful for smoke-testing a build without touching the installed copy —
+and `npm start` runs the app directly from the dev tree.
+
 ## Building from source (Windows)
 
 Requirements: **Node >= 24** (see `.nvmrc`) and npm >= 10. No Visual
