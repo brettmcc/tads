@@ -73,7 +73,7 @@ jobs:
           }
       - task: CopyFiles@2
         inputs:
-          contents: "packages/tad-app/dist/tad*"
+          contents: "packages/tad-app/release/Tad*"
           targetFolder: $(Build.ArtifactStagingDirectory)
       - task: PublishBuildArtifacts@1
         inputs:
@@ -116,11 +116,11 @@ jobs:
           }
       - task: CopyFiles@2
         inputs:
-          contents: "packages/tad-app/dist/Tad*.zip"
+          contents: "packages/tad-app/release/Tad*.zip"
           targetFolder: $(Build.ArtifactStagingDirectory)
       - task: CopyFiles@2
         inputs:
-          contents: "packages/tad-app/dist/Tad*.dmg"
+          contents: "packages/tad-app/release/Tad*.dmg"
           targetFolder: $(Build.ArtifactStagingDirectory)
       - task: PublishBuildArtifacts@1
         inputs:

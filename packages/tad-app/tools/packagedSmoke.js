@@ -1,5 +1,5 @@
 /**
- * Smoke test for the PACKAGED Windows app (dist/win-unpacked/Tad.exe):
+ * Smoke test for the PACKAGED Windows app (release/win-unpacked/Tads.exe):
  * opens a generated fixture parquet, runs a browse and a summarize
  * command, and verifies the grid, the results pane, and visible SQL.
  *
@@ -30,7 +30,7 @@ async function writeFixtureParquet(target) {
 }
 
 async function main() {
-  const exePath = path.resolve(__dirname, "..", "dist", "win-unpacked", "Tads.exe");
+  const exePath = path.resolve(__dirname, "..", "release", "win-unpacked", "Tads.exe");
   if (!fs.existsSync(exePath)) {
     throw new Error(`packaged app not found at ${exePath}; run electron-builder --dir first`);
   }

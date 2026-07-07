@@ -71,7 +71,7 @@ npm start -- data.parquet   # launch the app on a file
 ## Installing Tads
 
 Installers are produced with [electron-builder](https://www.electron.build/)
-and land in `packages/tad-app/dist/`. They are not checked into the
+and land in `packages/tad-app/release/`. They are not checked into the
 repository (a Windows installer alone is ~190 MB) — build them from
 source with the commands below, or download one from the project's
 GitHub Releases page if a release has been published.
@@ -89,7 +89,7 @@ npm run build
 ### Windows 11 (and Windows 10)
 
 ```powershell
-npm run dist:win   # -> packages\tad-app\dist\Tads Setup <version>.exe
+npm run dist:win   # -> packages\tad-app\release\Tads Setup <version>.exe
 ```
 
 Double-click `Tads Setup <version>.exe` and follow the wizard (it is an
@@ -112,7 +112,7 @@ The build is unsigned, so SmartScreen may warn on first run: click
 On a Mac:
 
 ```sh
-npm run dist:mac      # -> packages/tad-app/dist/Tads-<version>.dmg (+ .zip)
+npm run dist:mac      # -> packages/tad-app/release/Tads-<version>.dmg (+ .zip)
 npm run dist-arm64 -w packages/tad-app   # explicit arm64 build if needed
 ```
 
@@ -137,14 +137,14 @@ ln -s "/Applications/Tads.app/Contents/Resources/tad.sh" /usr/local/bin/tad
 On a Linux machine:
 
 ```sh
-npm run dist:linux    # -> .deb, .rpm and .tar.bz2 in packages/tad-app/dist/
+npm run dist:linux    # -> .deb, .rpm and .tar.bz2 in packages/tad-app/release/
 ```
 
 Install the package for your distribution:
 
 ```sh
-sudo apt install ./packages/tad-app/dist/tads_<version>_amd64.deb   # Debian/Ubuntu
-sudo dnf install ./packages/tad-app/dist/tads-<version>.x86_64.rpm  # Fedora/RHEL
+sudo apt install ./packages/tad-app/release/tads_<version>_amd64.deb   # Debian/Ubuntu
+sudo dnf install ./packages/tad-app/release/tads-<version>.x86_64.rpm  # Fedora/RHEL
 ```
 
 or unpack the `.tar.bz2` anywhere and run the `tads` binary inside it.
@@ -152,7 +152,7 @@ or unpack the `.tar.bz2` anywhere and run the `tads` binary inside it.
 ### Running without installing
 
 On any platform, `npm run pack` produces an unpacked, runnable app
-(e.g. `packages/tad-app/dist/win-unpacked/Tads.exe` on Windows) —
+(e.g. `packages/tad-app/release/win-unpacked/Tads.exe` on Windows) —
 useful for smoke-testing a build without touching the installed copy —
 and `npm start` runs the app directly from the dev tree.
 
@@ -169,7 +169,7 @@ npm install        # installs all workspace packages
 npm run build      # builds all workspace packages
 npm start          # launches the desktop app (or: npm start -- file.parquet)
 npm test           # reltab + reltab-duckdb + tadviewer test suites
-npm run pack       # packaged app in packages/tad-app/dist/win-unpacked
+npm run pack       # packaged app in packages/tad-app/release/win-unpacked
 npm run dist       # full distributable installer
 ```
 

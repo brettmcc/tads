@@ -103,7 +103,8 @@
     "afterSign": "./tools/notarize.js",
     "buildNumber": "1",
     "directories": {
-      "buildResources": "buildRes"
+      "buildResources": "buildRes",
+      "output": "release"
     },
     "dmg": {
       "icon": "dmgIcon.icns",
