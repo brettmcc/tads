@@ -32,7 +32,8 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
 
   const activityButton = (
     target: Activity,
-    iconName: IconName
+    iconName: IconName,
+    label: string
   ): JSX.Element => (
     <Button
       icon={iconName}
@@ -40,18 +41,24 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
       active={activity === target}
       onClick={handleActivityClick(target)}
       data-testid={`activity-${target.toLocaleLowerCase()}`}
+      title={label}
+      aria-label={label}
     />
   );
 
   const dataSourceButton = showDataSources
-    ? activityButton("DataSource", "database")
+    ? activityButton("DataSource", "database", "Data sources")
     : null;
 
   return (
     <div className={"activityBar"}>
       {dataSourceButton}
       {/* activityButton("Query", "build") */}
-      {activityButton("Pivot", "pivot-table")}
+      {activityButton(
+        "Pivot",
+        "pivot-table",
+        "View settings: columns, pivot, sort, format"
+      )}
       {/* activityButton("Preferences", "cog") */}
     </div>
   );
