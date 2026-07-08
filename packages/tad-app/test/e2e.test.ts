@@ -128,13 +128,16 @@ test("browse updates the main grid", async () => {
 
   await runCommand("bro a b if c > 2");
 
-  // grid re-renders with just the projected columns
+  // grid re-renders with just the projected columns (plus the unnamed
+  // Stata-style row-number column on the left)
   await page.waitForFunction(
     () => {
       const els = Array.from(
         document.querySelectorAll(".slick-header-column .slick-column-name")
       );
-      const names = els.map((el) => (el.textContent ?? "").trim());
+      const names = els
+        .map((el) => (el.textContent ?? "").trim())
+        .filter((nm) => nm.length > 0);
       return names.length === 2 && names[0] === "a" && names[1] === "b";
     },
     undefined,
@@ -156,6 +159,59 @@ test("browse updates the main grid", async () => {
 
   // browse appends a results entry without opening the pane
   expect(await page.locator('[data-testid="results-pane"]').count()).toBe(0);
+}, 90000);
+
+test("row numbers, row select, and cell-contents bar", async () => {
+  // the filtered view (c > 2, 4 rows) numbers its rows 1..4
+  await page.waitForSelector(".slick-cell.row-number-cell", {
+    timeout: 30000,
+  });
+  const rowNums = await page.$$eval(".slick-cell.row-number-cell", (els) =>
+    els.map((el) => (el.textContent ?? "").trim())
+  );
+  expect(rowNums.slice(0, 4)).toEqual(["1", "2", "3", "4"]);
+
+  // clicking a data cell spells it out in the cell-contents bar and
+  // mildly highlights its row stub and column header
+  await page
+    .locator('.slick-row:has(.row-number-cell:text-is("1")) .slick-cell')
+    .nth(1)
+    .click();
+  await page.waitForFunction(
+    () => {
+      const label = document.querySelector(
+        '[data-testid="cell-content-label"]'
+      );
+      const value = document.querySelector(
+        '[data-testid="cell-content-value"]'
+      );
+      return (
+        label != null &&
+        (label.textContent ?? "").trim() === "a[1]" &&
+        value != null &&
+        (value.textContent ?? "").trim() === "3"
+      );
+    },
+    undefined,
+    { timeout: 30000 }
+  );
+  expect(
+    await page.locator(".slick-cell.row-number-cell.row-stub-active").count()
+  ).toBe(1);
+  expect(
+    await page.locator(".slick-header-column.col-header-active").count()
+  ).toBe(1);
+
+  // clicking a row number selects the entire row
+  await page
+    .locator(".slick-cell.row-number-cell", { hasText: "2" })
+    .first()
+    .click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".slick-cell.selected").length >= 2,
+    undefined,
+    { timeout: 30000 }
+  );
 }, 90000);
 
 test("summarize appends a table to the results pane", async () => {
