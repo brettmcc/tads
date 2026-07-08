@@ -172,11 +172,19 @@ test("row numbers, row select, and cell-contents bar", async () => {
   expect(rowNums.slice(0, 4)).toEqual(["1", "2", "3", "4"]);
 
   // clicking a data cell spells it out in the cell-contents bar and
-  // mildly highlights its row stub and column header
-  await page
-    .locator('.slick-row:has(.row-number-cell:text-is("1")) .slick-cell')
-    .nth(1)
-    .click();
+  // mildly highlights its row stub and column header. With the frozen
+  // row-number pane, data cells live in the right canvas; the first
+  // visual row is the one positioned at top 0.
+  await page.evaluate(() => {
+    const canvas = document.querySelector(
+      ".grid-canvas-top.grid-canvas-right"
+    )!;
+    const rows = Array.from(
+      canvas.querySelectorAll(".slick-row")
+    ) as HTMLElement[];
+    const row0 = rows.find((r) => r.style.top === "0px")!;
+    (row0.querySelector(".slick-cell") as HTMLElement).click();
+  });
   await page.waitForFunction(
     () => {
       const label = document.querySelector(
@@ -212,6 +220,20 @@ test("row numbers, row select, and cell-contents bar", async () => {
     undefined,
     { timeout: 30000 }
   );
+
+  // the row-number column is frozen: it renders in the left (pinned)
+  // canvas so it stays in view during horizontal scrolling
+  expect(
+    await page.locator(".grid-canvas-left .slick-cell.row-number-cell").count()
+  ).toBeGreaterThan(0);
+}, 90000);
+
+test("data source node labels carry the full path as a hover tooltip", async () => {
+  const titles = await page.$$eval('[data-testid="ds-node-label"]', (els) =>
+    els.map((el) => el.getAttribute("title") ?? "")
+  );
+  expect(titles.length).toBeGreaterThan(0);
+  expect(titles.some((t) => t.endsWith("fixture.parquet"))).toBe(true);
 }, 90000);
 
 test("summarize appends a table to the results pane", async () => {

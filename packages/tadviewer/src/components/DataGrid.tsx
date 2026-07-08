@@ -31,7 +31,9 @@ import { Cell } from "./SelectionChangeData";
 import { SimpleClipboard } from "./SimpleClipboard";
 
 const { Slick } = SlickGrid;
-const { Plugins } = SlickGrid as any;
+// the classic Grid ignores frozenColumn; the FrozenGrid variant is the
+// same grid with frozen row/column pane support compiled in
+const { Plugins, FrozenGrid } = SlickGrid as any;
 const { CellRangeSelector, CellSelectionModel, CellCopyManager, AutoTooltips } =
   Plugins;
 
@@ -44,6 +46,9 @@ const genContainerId = (): string => `epGrid${divCounter++}`;
 const baseGridOptions = {
   multiColumnSort: true,
   headerRowHeight: 80,
+  // pin the leftmost column (row numbers when flat, the pivot column
+  // when pivoted) so it stays in view during horizontal scrolling
+  frozenColumn: 0,
 };
 
 const INDENT_PER_LEVEL = 15; // pixels
@@ -400,7 +405,7 @@ const createGrid = (
   } = props;
 
   const gridOptions = getGridOptions(props);
-  let grid = new Slick.Grid(`#${containerId}`, dataView, columns, gridOptions);
+  let grid = new FrozenGrid(`#${containerId}`, dataView, columns, gridOptions);
 
   const selectionModel = new CellSelectionModel();
   grid.setSelectionModel(selectionModel);
