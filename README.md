@@ -62,26 +62,11 @@ language reference, session semantics, and safety guarantees.
 
 ## Installing Tads
 
-**Casual users: download a prebuilt installer from
+**Download a prebuilt installer from
 [GitHub Releases](https://github.com/brettmcc/tads/releases)** — no
 command line or build step needed. Each release carries a Windows
-`.exe`, a macOS `.dmg` (built by the `release-macos` CI workflow), and
+`.exe`, a macOS `.dmg`, and
 Linux `.deb` / `.tar.bz2` packages.
-
-To build an installer yourself instead, the per-platform instructions
-are below. Installers are produced with
-[electron-builder](https://www.electron.build/) and land in
-`packages/tad-app/release/`; they are not checked into the repository
-(a Windows installer alone is ~100 MB). electron-builder can only
-build installers for the OS it runs on (macOS installers in particular
-require a Mac), so build each platform's installer on that platform.
-On every platform the build prerequisites are the same: **Node >= 24**
-and npm >= 10, then:
-
-```sh
-npm install
-npm run build
-```
 
 ### Windows 11 (and Windows 10)
 
