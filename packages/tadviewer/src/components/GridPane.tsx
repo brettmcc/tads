@@ -164,7 +164,7 @@ const GridPaneInternal: React.FunctionComponent<GridPaneProps> = ({
           actions.openPath(path, stateRef);
         }
       } else {
-        if (dataView?.schema.columnIndex(columnId)) {
+        if (dataView?.schema.hasColumn(columnId)) {
           const ch = viewParams.getClickHandler(dataView.schema, columnId);
           ch({ openURL }, row, column, cellVal);
         }
@@ -202,7 +202,7 @@ const GridPaneInternal: React.FunctionComponent<GridPaneProps> = ({
         columnDisplayName = "Pivot";
         value = item._pivot == null ? "" : String(item._pivot);
       } else {
-        const inSchema = schema.columnIndex(columnId) !== undefined;
+        const inSchema = schema.hasColumn(columnId);
         columnDisplayName = inSchema ? schema.displayName(columnId) : columnId;
         if (cellVal == null) {
           value = "";

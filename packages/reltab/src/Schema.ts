@@ -83,6 +83,12 @@ export class Schema {
     return this.columnIndices[colId];
   }
 
+  // N.B.: columnIndex returns 0 for the first column, so callers must
+  // not use it as a membership test; use this instead
+  hasColumn(colId: string): boolean {
+    return this.columnIndices[colId] !== undefined;
+  }
+
   compatCheck(sb: Schema): boolean {
     if (this.columns.length !== sb.columns.length) {
       throw new SchemaError(

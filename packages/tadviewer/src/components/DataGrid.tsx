@@ -103,7 +103,7 @@ const getColWidth = (
 ) => {
   const { schema } = dataView;
   let sf: (val: any) => string;
-  if (schema.columnIndex(cnm)) {
+  if (schema.hasColumn(cnm)) {
     const cf = getColumnFormatter(schema, cnm);
     sf = (val: any) => cf(val) ?? val.toString();
   } else {
