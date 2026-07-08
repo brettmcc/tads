@@ -56,6 +56,21 @@ type DSTreeNodeData = {
 
 type DSTreeNodeInfo = TreeNodeInfo<DSTreeNodeData>;
 
+/**
+ * Reconstruct the full path a tree node refers to: the data source's
+ * root (a file or directory path for local files) joined with the
+ * path segments below it.
+ */
+const dsNodeFullPath = (dsPath: DataSourcePath): string => {
+  const root = String(dsPath.sourceId.resourceId);
+  const segs = dsPath.path.filter((seg) => seg !== ".");
+  if (segs.length === 0) {
+    return root;
+  }
+  const sep = root.includes("\\") ? "\\" : "/";
+  return root.replace(/[\\/]+$/, "") + sep + segs.join(sep);
+};
+
 const dsNodeTreeNode = (
   dsc: DataSourceConnection,
   dsPath: DataSourcePath,
@@ -64,7 +79,12 @@ const dsNodeTreeNode = (
   const ret: DSTreeNodeInfo = {
     icon: dataKindIcon(dsNode.kind),
     id: JSON.stringify(dsPath),
-    label: dsNode.displayName,
+    // the title tooltip shows the full path at the cursor on hover
+    label: (
+      <span title={dsNodeFullPath(dsPath)} data-testid="ds-node-label">
+        {dsNode.displayName}
+      </span>
+    ),
     nodeData: { dsc, dsPath, dsNode },
     hasCaret: dsNode.isContainer,
   };
