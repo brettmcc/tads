@@ -22,7 +22,10 @@ import { AppState } from "../src/AppState";
 import { toggleShown } from "../src/actions";
 import { commandSchema } from "../src/commandActions";
 import { resetEntryIds } from "../src/commandState";
-import { CellContentBar } from "../src/components/CellContentBar";
+import {
+  CellContentBar,
+  formatCellValueText,
+} from "../src/components/CellContentBar";
 import {
   CommandBar,
   formatVariableForCommand,
@@ -343,6 +346,25 @@ describe("CommandBar", () => {
     expect(screen.getByTestId("cell-content-value").textContent).toBe(
       "Buick Century"
     );
+  });
+
+  test("formatCellValueText renders values plainly, without HTML entities", () => {
+    const viewParams = new ViewParams({
+      displayColumns: schema.columns.slice(),
+    });
+    // list/object values format as JSON with real quotes, not &#x22;
+    expect(
+      formatCellValueText(viewParams, schema, "s", [
+        "American Food",
+        "Mexican Food",
+      ])
+    ).toBe('["American Food","Mexican Food"]');
+    // strings pass through untouched, including quotes and ampersands
+    expect(formatCellValueText(viewParams, schema, "s", 'say "hi" & bye')).toBe(
+      'say "hi" & bye'
+    );
+    expect(formatCellValueText(viewParams, schema, "a", 42)).toBe("42");
+    expect(formatCellValueText(viewParams, schema, "s", null)).toBe("");
   });
 
   test("cell-contents bar is empty with no focused cell", () => {

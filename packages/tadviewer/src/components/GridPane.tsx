@@ -12,6 +12,7 @@ import { DataGrid, DataGridProps } from "./DataGrid";
 import { SimpleClipboard } from "./SimpleClipboard";
 
 import { CellClickData } from "./CellClickData";
+import { formatCellValueText } from "./CellContentBar";
 import { Cell, ColumnData, SelectionChangeData } from "./SelectionChangeData";
 
 export type OpenURLFn = (url: string) => void;
@@ -202,16 +203,10 @@ const GridPaneInternal: React.FunctionComponent<GridPaneProps> = ({
         columnDisplayName = "Pivot";
         value = item._pivot == null ? "" : String(item._pivot);
       } else {
-        const inSchema = schema.hasColumn(columnId);
-        columnDisplayName = inSchema ? schema.displayName(columnId) : columnId;
-        if (cellVal == null) {
-          value = "";
-        } else if (inSchema) {
-          const cf = viewParams.getColumnFormatter(schema, columnId);
-          value = (cf as any)(cellVal) ?? String(cellVal);
-        } else {
-          value = String(cellVal);
-        }
+        columnDisplayName = schema.hasColumn(columnId)
+          ? schema.displayName(columnId)
+          : columnId;
+        value = formatCellValueText(viewParams, schema, columnId, cellVal);
       }
       // observation numbers only make sense for flat leaf rows
       const flatLeaf = viewParams.vpivots.length === 0 && item._isLeaf;
