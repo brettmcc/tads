@@ -1,6 +1,6 @@
 import { ViewParams } from "./ViewParams";
 import { ViewState } from "./ViewState";
-import { AppState, ExportFormat } from "./AppState";
+import { AppState, ExportFormat, FocusedCellData } from "./AppState";
 import * as reltab from "reltab";
 import { Activity, ColumnListTypes } from "./components/defs";
 import { Path, PathTree } from "aggtree";
@@ -393,6 +393,16 @@ export const setSortKey = (
     )(st);
     return nextSt;
   });
+};
+
+export const setFocusedCell = (
+  focusedCell: FocusedCellData | null,
+  stateRef: StateRef<AppState>
+) => {
+  update(
+    stateRef,
+    (st: AppState): AppState => st.set("focusedCell", focusedCell) as AppState
+  );
 };
 
 export const setColumnOrder = (

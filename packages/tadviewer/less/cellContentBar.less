@@ -1,0 +1,38 @@
+/* Stata Browse-style cell-contents bar above the data grid */
+
+.cell-content-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 24px;
+  padding: 3px 8px;
+  background: #f7f7f7;
+  border-bottom: 1px solid #d0d0d0;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 9pt;
+}
+
+.cell-content-label {
+  flex: 0 0 auto;
+  min-width: 90px;
+  padding: 1px 6px;
+  font-weight: 700;
+  color: #555;
+  white-space: nowrap;
+  background: #ececec;
+  border: 1px solid #d8d8d8;
+  border-radius: 2px;
+}
+
+/* full contents: wraps up to a few lines, then scrolls */
+.cell-content-value {
+  flex: 1 1 auto;
+  padding: 2px;
+  max-height: 62px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  cursor: text;
+}

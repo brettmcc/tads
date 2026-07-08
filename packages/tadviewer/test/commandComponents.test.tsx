@@ -22,6 +22,7 @@ import { AppState } from "../src/AppState";
 import { toggleShown } from "../src/actions";
 import { commandSchema } from "../src/commandActions";
 import { resetEntryIds } from "../src/commandState";
+import { CellContentBar } from "../src/components/CellContentBar";
 import {
   CommandBar,
   formatVariableForCommand,
@@ -327,6 +328,27 @@ describe("CommandBar", () => {
     fireEvent.mouseDown(screen.getAllByTestId("command-completion-item")[1]);
     expect(input.value).toBe("sum price_usd");
     expect(screen.queryByTestId("command-completion-menu")).toBeNull();
+  });
+
+  test("cell-contents bar spells out the focused cell", () => {
+    const st = mkAppState().set("focusedCell", {
+      obs: 4,
+      columnDisplayName: "make",
+      value: "Buick Century",
+    }) as AppState;
+    render(<CellContentBar appState={st} />);
+    expect(screen.getByTestId("cell-content-label").textContent).toBe(
+      "make[4]"
+    );
+    expect(screen.getByTestId("cell-content-value").textContent).toBe(
+      "Buick Century"
+    );
+  });
+
+  test("cell-contents bar is empty with no focused cell", () => {
+    render(<CellContentBar appState={mkAppState()} />);
+    expect(screen.getByTestId("cell-content-label").textContent).toBe("");
+    expect(screen.getByTestId("cell-content-value").textContent).toBe("");
   });
 
   test("Break interrupts the active connection", async () => {

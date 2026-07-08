@@ -180,6 +180,47 @@ const GridPaneInternal: React.FunctionComponent<GridPaneProps> = ({
     [stateRef]
   );
 
+  // spell out the focused cell for the cell-contents bar
+  const onActiveCellChange = React.useCallback(
+    (
+      row: number,
+      column: number,
+      item: DataRow,
+      columnId: string,
+      cellVal: any
+    ) => {
+      const appState = mutableGet(stateRef);
+      const { viewState } = appState;
+      const { viewParams, dataView } = viewState;
+      if (dataView == null) {
+        return;
+      }
+      const { schema } = dataView;
+      let columnDisplayName: string;
+      let value: string;
+      if (columnId === "_pivot") {
+        columnDisplayName = "Pivot";
+        value = item._pivot == null ? "" : String(item._pivot);
+      } else {
+        const inSchema = schema.columnIndex(columnId) !== undefined;
+        columnDisplayName = inSchema ? schema.displayName(columnId) : columnId;
+        if (cellVal == null) {
+          value = "";
+        } else if (inSchema) {
+          const cf = viewParams.getColumnFormatter(schema, columnId);
+          value = (cf as any)(cellVal) ?? String(cellVal);
+        } else {
+          value = String(cellVal);
+        }
+      }
+      // observation numbers only make sense for flat leaf rows
+      const flatLeaf = viewParams.vpivots.length === 0 && item._isLeaf;
+      const obs = flatLeaf ? (viewParams.showRoot ? row : row + 1) : null;
+      actions.setFocusedCell({ obs, columnDisplayName, value }, stateRef);
+    },
+    [stateRef]
+  );
+
   const isPivoted = viewParams.vpivots.length > 0;
 
   const dataGridProps: DataGridProps = {
@@ -198,6 +239,7 @@ const GridPaneInternal: React.FunctionComponent<GridPaneProps> = ({
     onSetSortKey,
     onGridClick,
     onGridSelectionChange,
+    onActiveCellChange,
     onSetColumnOrder,
     sortKey,
     isPivoted,

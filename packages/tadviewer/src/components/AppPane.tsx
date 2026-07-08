@@ -20,6 +20,7 @@ import {
 import { GridPane, OpenURLFn } from "./GridPane";
 import { Footer } from "./Footer";
 import { LoadingModal } from "./LoadingModal";
+import { CellContentBar } from "./CellContentBar";
 import { CommandBar } from "./CommandBar";
 import { ResultsPane } from "./ResultsPane";
 import * as actions from "../actions";
@@ -469,6 +470,7 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
     centerPane = (
       <div className="center-app-pane">
         {loadingModal}
+        <CellContentBar appState={appState} />
         <GridPane
           appState={appState}
           viewState={appState.viewState}

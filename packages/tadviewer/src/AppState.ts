@@ -22,6 +22,18 @@ export const defaultParquetExportOptions: ParquetExportOptions = {
   compression: "snappy",
 };
 
+/**
+ * The grid cell that currently has focus, spelled out for the
+ * Stata Browse-style cell-contents bar above the grid.
+ */
+export interface FocusedCellData {
+  /** 1-based observation number, or null for aggregate/pivot rows */
+  obs: number | null;
+  columnDisplayName: string;
+  /** formatted cell text, in full */
+  value: string;
+}
+
 export interface AppStateProps {
   initialized: boolean; // Has main process initialization completed?
 
@@ -58,6 +70,9 @@ export interface AppStateProps {
    * baseSchema.
    */
   sessionColumns: string[] | null;
+
+  /** grid cell shown in the cell-contents bar (session-only) */
+  focusedCell: FocusedCellData | null;
 }
 
 const defaultAppStateProps: AppStateProps = {
@@ -81,6 +96,7 @@ const defaultAppStateProps: AppStateProps = {
   commandRunning: false,
   sessionFilter: null,
   sessionColumns: null,
+  focusedCell: null,
 };
 
 export class AppState extends Immutable.Record(defaultAppStateProps) {
@@ -107,4 +123,5 @@ export class AppState extends Immutable.Record(defaultAppStateProps) {
   public readonly commandRunning!: boolean;
   public readonly sessionFilter!: Expr | null;
   public readonly sessionColumns!: string[] | null;
+  public readonly focusedCell!: FocusedCellData | null;
 }

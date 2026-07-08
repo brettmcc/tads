@@ -18,6 +18,8 @@ require("../less/footer.less");
 
 require("../less/commandBar.less");
 
+require("../less/cellContentBar.less");
+
 require("../less/filterEditor.less");
 require("../less/delayedCalcFooter.less");
 
@@ -26,6 +28,7 @@ export * from "./AppState";
 export * from "./commandState";
 export * from "./components/AppPane";
 export * from "./components/CellClickData";
+export * from "./components/CellContentBar";
 export * from "./components/CommandBar";
 export * from "./components/ResultsPane";
 export * from "./components/SelectionChangeData";
