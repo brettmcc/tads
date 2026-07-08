@@ -201,6 +201,7 @@ const GridPaneInternal: React.FunctionComponent<GridPaneProps> = ({
     onSetColumnOrder,
     sortKey,
     isPivoted,
+    showRoot: viewParams.showRoot,
     clipboard,
     openURL,
     embedded,

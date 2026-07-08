@@ -138,6 +138,29 @@ const getColWidth = (
 
 type ColWidthMap = { [cid: string]: number };
 
+// Stata Browse-style row-number column, shown as the leftmost column in
+// unpivoted views; clicking a row number selects the entire row.
+const ROW_NUMBER_COL_ID = "_rowNum";
+const ROW_NUMBER_MIN_WIDTH = 44;
+
+// Grid rows are absolute indices into the (possibly filtered) view, so
+// the observation number is the row index offset by the root aggregate
+// row when it is shown.
+const mkRowNumberFormatter =
+  (showRoot: boolean) =>
+  (row: number, cell: any, value: any, columnDef: any, item: any): string => {
+    if (item == null || !item._isLeaf) {
+      return "";
+    }
+    return String(showRoot ? row : row + 1);
+  };
+
+const rowNumberColWidth = (dataView: PagedDataView): number =>
+  Math.max(
+    ROW_NUMBER_MIN_WIDTH,
+    Math.ceil(16 + CHAR_WIDTH * String(dataView.getLength()).length)
+  );
+
 function getInitialColWidthsMap(
   getColumnFormatter: (schema: reltab.Schema, cid: string) => CellFormatter,
   dataView: PagedDataView
@@ -167,7 +190,8 @@ const mkSlickColMap = (
   getColumnFormatter: (schema: reltab.Schema, cid: string) => CellFormatter,
   getColumnCssClassName: (schema: reltab.Schema, cid: string) => string | null,
   pivotColumnDisplayName: string,
-  colWidths: ColWidthMap
+  colWidths: ColWidthMap,
+  showRoot: boolean
 ) => {
   let slickColMap: any = {};
 
@@ -177,6 +201,19 @@ const mkSlickColMap = (
     id: "_parentId",
     field: "_parentId",
     name: "_parentId",
+  };
+  slickColMap[ROW_NUMBER_COL_ID] = {
+    id: ROW_NUMBER_COL_ID,
+    field: ROW_NUMBER_COL_ID,
+    name: "",
+    cssClass: "row-number-cell",
+    width: ROW_NUMBER_MIN_WIDTH,
+    minWidth: 24,
+    sortable: false,
+    resizable: true,
+    focusable: false,
+    selectable: false,
+    formatter: mkRowNumberFormatter(showRoot),
   };
   for (let colId of schema.columns) {
     let cmd = schema.columnMetadata[colId];
@@ -354,6 +391,7 @@ const createGrid = (
     onSetSortKey,
     onGridClick,
     onGridSelectionChange,
+    onActiveCellChange,
     onSetColumnOrder,
     sortKey,
     clipboard,
@@ -369,19 +407,23 @@ const createGrid = (
   selectionModel.onSelectedRangesChanged.subscribe((e: any, args: any) => {
     const { fromCell, toCell, fromRow, toRow } = args[0];
 
-    const selectedColumns = grid
-      .getColumns()
-      .slice(fromCell, toCell + 1)
-      .map((col: any) => col.id);
+    const gridCols = grid.getColumns();
+    // the synthetic row-number column carries no data
+    const selCells: number[] = [];
+    for (let col = fromCell; col <= toCell; col++) {
+      if (gridCols[col].id !== ROW_NUMBER_COL_ID) {
+        selCells.push(col);
+      }
+    }
+    const selectedColumns = selCells.map((col) => gridCols[col].id);
 
     let items = [];
-    const gridCols = grid.getColumns();
     const gridData = grid.getData();
 
     for (let row = fromRow; row <= toRow; row++) {
       const rowData = gridData.getItem(row);
       const selectedDataInRow = [];
-      for (let col = fromCell; col <= toCell; col++) {
+      for (const col of selCells) {
         const cid = gridCols[col].id;
         selectedDataInRow.push(rowData[cid]);
       }
@@ -409,6 +451,9 @@ const createGrid = (
       const copyRow = [];
       for (let col = range.fromCell; col <= range.toCell; col++) {
         const cid = gridCols[col].id;
+        if (cid === ROW_NUMBER_COL_ID) {
+          continue;
+        }
         copyRow.push(escapeTabs(rowData[cid]));
       }
       copyRowStrings.push(copyRow.join("\t"));
@@ -474,11 +519,63 @@ const createGrid = (
     onSetSortKey?.(sortKey);
   });
 
+  // Mildly highlight the row-number cell and column header of the active
+  // cell. Cell css styles survive row re-renders; the header class must be
+  // re-applied after column changes (see updateGrid).
+  const applyActiveCellHighlight = (row: number | null, cell: number | null) => {
+    (grid as any)._tadActiveCellPos = { row, cell };
+    if (row == null) {
+      grid.removeCellCssStyles("active-row-stub");
+    } else {
+      grid.setCellCssStyles("active-row-stub", {
+        [row]: { [ROW_NUMBER_COL_ID]: "row-stub-active" },
+      });
+    }
+    const container = document.getElementById(containerId);
+    if (container == null) {
+      return;
+    }
+    container
+      .querySelectorAll(".slick-header-column.col-header-active")
+      .forEach((node) => node.classList.remove("col-header-active"));
+    if (cell != null) {
+      const headers = container.querySelectorAll(
+        ".slick-header-columns .slick-header-column"
+      );
+      headers[cell]?.classList.add("col-header-active");
+    }
+  };
+  (grid as any)._tadApplyActiveCellHighlight = applyActiveCellHighlight;
+
+  grid.onActiveCellChanged.subscribe((e: any, args: any) => {
+    if (args == null || args.row == null || args.cell == null) {
+      applyActiveCellHighlight(null, null);
+      return;
+    }
+    applyActiveCellHighlight(args.row, args.cell);
+    const col = grid.getColumns()[args.cell];
+    const item = grid.getDataItem(args.row);
+    if (col != null && item != null) {
+      onActiveCellChange?.(args.row, args.cell, item, col.id, item[col.id]);
+    }
+  });
+
   const handleGridClick = (e: any, args: any) => {
     // log.info("onGridClick: ", e, args);
     const columns = grid.getColumns();
     const col = columns[args.cell];
     // log.info("onGridClick: column: ", col);
+    if (col.id === ROW_NUMBER_COL_ID) {
+      // Stata Browse-style: clicking a row number selects the whole row
+      const lastCell = columns.length - 1;
+      if (lastCell >= 1) {
+        selectionModel.setSelectedRanges([
+          new (Slick as any).Range(args.row, 1, args.row, lastCell),
+        ]);
+        applyActiveCellHighlight(args.row, null);
+      }
+      return;
+    }
     var item = grid.getDataItem(args.row);
 
     onGridClick?.(args.row, args.cell, item, col.id, item[col.id]);
@@ -532,11 +629,16 @@ const getGridCols = (
     updateColWidth(gs, getColumnFormatter, dataView!, "_pivot");
     let pivotCol = gs.slickColMap["_pivot"];
     gridCols.unshift(pivotCol);
+  } else {
+    // observation numbers only make sense for flat (unpivoted) views
+    const rowNumCol = gs.slickColMap[ROW_NUMBER_COL_ID];
+    rowNumCol.width = rowNumberColWidth(dataView);
+    gridCols.unshift(rowNumCol);
   }
   if (showHiddenColumns) {
     const hiddenColIds = _.difference(
       _.keys(gs.slickColMap),
-      gridCols.map((gc) => gc.field)
+      gridCols.map((gc) => gc.field).concat([ROW_NUMBER_COL_ID])
     );
     const hiddenCols = hiddenColIds.map((cid) => gs.slickColMap[cid]);
     gridCols = gridCols.concat(hiddenCols);
@@ -557,6 +659,7 @@ const updateGrid = (gs: GridState, props: DataGridProps) => {
     displayColumns,
     pivotColumnDisplayName,
     sortKey,
+    showRoot,
   } = props;
 
   gs.slickColMap = mkSlickColMap(
@@ -564,7 +667,8 @@ const updateGrid = (gs: GridState, props: DataGridProps) => {
     getColumnFormatter,
     getColumnCssClassName,
     pivotColumnDisplayName ?? "",
-    gs.colWidthsMap!
+    gs.colWidthsMap!,
+    showRoot ?? false
   );
   const gridCols = getGridCols(
     gs,
@@ -597,6 +701,13 @@ const updateGrid = (gs: GridState, props: DataGridProps) => {
   grid.updateRowCount();
   grid.render();
   grid.resizeCanvas();
+
+  // setColumns rebuilds the header DOM, dropping the active-column
+  // highlight; re-apply it from the recorded position
+  const activePos = (grid as any)._tadActiveCellPos;
+  if (activePos != null) {
+    (grid as any)._tadApplyActiveCellHighlight?.(activePos.row, activePos.cell);
+  }
 };
 
 const createGridState = (
@@ -617,6 +728,7 @@ const createGridState = (
     isPivoted,
     showHiddenColumns,
     displayColumns,
+    showRoot,
   } = props;
 
   const colWidthsMap = getInitialColWidthsMap(getColumnFormatter, dataView!);
@@ -625,7 +737,8 @@ const createGridState = (
     getColumnFormatter,
     getColumnCssClassName,
     pivotColumnDisplayName ?? "",
-    colWidthsMap
+    colWidthsMap,
+    showRoot ?? false
   );
   const gs = { grid: null, colWidthsMap, slickColMap, containerId };
 
@@ -677,6 +790,16 @@ export interface DataGridProps {
     columns: string[],
     items: any[][]
   ) => void;
+  /** fires when the active (focused) cell moves, via click or keyboard */
+  onActiveCellChange?: (
+    row: number,
+    column: number,
+    dataRow: DataRow,
+    columnId: string,
+    cellVal: any
+  ) => void;
+  /** whether the view shows the root aggregate row (affects row numbering) */
+  showRoot?: boolean;
   onSetColumnOrder?: (displayColumns: string[]) => void;
   openURL: OpenURLFn;
   embedded: boolean;
