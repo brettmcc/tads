@@ -70,13 +70,16 @@ table.column-selector-table td {
   position: absolute;
   top: 0;
   right: 0;
-  width: 6px;
+  width: 8px;
   height: 100%;
   cursor: col-resize;
+  /* always-visible vertical line cueing where to grab */
+  border-right: 2px solid #c8c8c8;
 }
 
 .col-resize-handle:hover {
-  background-color: #b8b8b8;
+  border-right-color: #888888;
+  background-color: #e4e4e4;
 }
 
 .column-selector thead {
