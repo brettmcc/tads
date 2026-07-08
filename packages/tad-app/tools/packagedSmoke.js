@@ -53,15 +53,26 @@ async function main() {
     await input.press("Enter");
     await page.waitForFunction(
       () => {
+        // ignore the unnamed Stata-style row-number column header
         const names = Array.from(
           document.querySelectorAll(".slick-header-column .slick-column-name")
-        ).map((el) => (el.textContent || "").trim());
+        )
+          .map((el) => (el.textContent || "").trim())
+          .filter((nm) => nm.length > 0);
         return names.length === 2 && names[0] === "a" && names[1] === "b";
       },
       undefined,
       { timeout: 30000 }
     );
     console.log("browse updated the grid (columns a, b)");
+
+    const rowNums = await page.$$eval(".slick-cell.row-number-cell", (els) =>
+      els.map((el) => (el.textContent || "").trim())
+    );
+    if (rowNums.slice(0, 4).join(",") !== "1,2,3,4") {
+      throw new Error(`row numbers wrong: got [${rowNums.join(",")}]`);
+    }
+    console.log("row-number column shows 1..4 for the filtered view");
 
     await input.fill("sum a b if a >= 3");
     await input.press("Enter");
