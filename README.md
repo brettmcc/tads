@@ -62,106 +62,58 @@ language reference, session semantics, and safety guarantees.
 
 ## Installing Tads
 
-**Download a prebuilt installer from
-[GitHub Releases](https://github.com/brettmcc/tads/releases)** — no
-command line or build step needed. Each release carries a Windows
-`.exe`, a macOS `.dmg`, and
-Linux `.deb` / `.tar.bz2` packages.
+Download an installer from the
+**[releases page](https://github.com/brettmcc/tads/releases)**. Tads
+is not code-signed yet, so your OS will ask you to confirm the first
+launch — the note for each OS below says what to click.
 
-### Windows 11 (and Windows 10)
+### Windows 10 / 11
 
-Install with winget (pending review in
-[microsoft/winget-pkgs#399350](https://github.com/microsoft/winget-pkgs/pull/399350);
-available once that merges):
+**Download:** get `Tads.Setup.<version>.exe`, double-click it, and
+follow the wizard. If SmartScreen warns, click **More info → Run
+anyway**. Tads then shows up in the Start menu and as an **Open
+With...** choice for `.csv`, `.parquet`, `.tad`, and similar files;
+uninstall it from **Settings → Apps**.
+
+**Package manager:**
 
 ```powershell
 winget install BrettMcCully.Tads
 ```
 
-or download `Tads.Setup.<version>.exe` from
-[Releases](https://github.com/brettmcc/tads/releases), or build it
-yourself:
+(awaiting approval in
+[microsoft/winget-pkgs#399350](https://github.com/microsoft/winget-pkgs/pull/399350)
+— use the download link until that merges.)
 
-```powershell
-npm run dist:win   # -> packages\tad-app\release\Tads Setup <version>.exe
-```
+### macOS
 
-Double-click `Tads Setup <version>.exe` and follow the wizard (it is an
-NSIS installer; you can pick the install directory). For an unattended
-install — e.g. provisioning a lab machine — run it with the NSIS silent
-flag:
+**Download:** get `Tads-<version>-arm64.dmg` for Apple Silicon
+(M1 or later) or `Tads-<version>.dmg` for Intel Macs. Open it and drag
+**Tads** into **Applications**. On first launch, right-click the app
+and choose **Open**; if macOS still refuses, allow it under
+**System Settings → Privacy & Security → Open Anyway**.
 
-```powershell
-& ".\Tads Setup 0.14.0.exe" /S
-```
+**Package manager:** not on Homebrew yet.
 
-The build is unsigned, so SmartScreen may warn on first run: click
-**More info → Run anyway**. The installer registers Tads as an
-**Open With...** handler for `.csv`, `.tsv`, `.parquet`, `.sqlite`,
-`.duckdb`, and `.tad` files and adds a Start-menu entry. Uninstall from
-**Settings → Apps** like any other application.
+### Linux
 
-### macOS (Apple Silicon or Intel)
-
-Download the dmg from
-[Releases](https://github.com/brettmcc/tads/releases) —
-`Tads-<version>-arm64.dmg` for Apple Silicon (M1 and later),
-`Tads-<version>.dmg` for Intel Macs (both are built on a
-macOS GitHub Actions runner by
-[`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml)) —
-or build it on a Mac:
-
-```sh
-npm run dist:mac      # -> packages/tad-app/release/Tads-<version>.dmg (+ .zip)
-npm run dist-arm64 -w packages/tad-app   # explicit arm64 build if needed
-```
-
-Open the `.dmg` and drag **Tads** into **Applications**. The build is
-not code-signed or notarized, so Gatekeeper will block the first
-launch; either right-click the app and choose **Open**, or clear the
-quarantine flag:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/Tads.app
-```
-
-To launch Tads from the terminal (`tad somefile.parquet`), symlink the
-bundled launcher script onto your PATH:
-
-```sh
-ln -s "/Applications/Tads.app/Contents/Resources/tad.sh" /usr/local/bin/tad
-```
-
-### Linux (Debian/Ubuntu, other)
-
-Download `tads_<version>_amd64.deb` or the portable `.tar.bz2` from
-[Releases](https://github.com/brettmcc/tads/releases), or build them on
-a Linux machine (WSL works):
-
-```sh
-npm run dist:linux    # -> .deb, .rpm and .tar.bz2 in packages/tad-app/release/
-```
-
-(the `.rpm` target additionally requires `rpmbuild` to be installed and
-is not part of published releases). Install the `.deb` with:
+**Debian / Ubuntu:** download `tads_<version>_amd64.deb`, then:
 
 ```sh
 sudo apt install ./tads_<version>_amd64.deb
 ```
 
-or unpack the `.tar.bz2` anywhere and run the `tads` binary inside it.
+**Any other distribution:** download `tads-<version>.tar.bz2`, unpack
+it anywhere, and run the `tads` binary inside — no installation needed.
 
-### Running without installing
+Instructions for building the installers yourself are in
+[Building the installers](#building-the-installers) below.
 
-On any platform, `npm run pack` produces an unpacked, runnable app
-(e.g. `packages/tad-app/release/win-unpacked/Tads.exe` on Windows) —
-useful for smoke-testing a build without touching the installed copy —
-and `npm start` runs the app directly from the dev tree.
+## Building from source
 
-## Building from source (Windows)
-
-Requirements: **Node >= 24** (see `.nvmrc`) and npm >= 10. No Visual
-Studio or Python toolchain is needed: every native dependency ships
+Requirements: **Node >= 24** (see `.nvmrc`) and npm >= 10. Works on
+Windows, macOS, and Linux; no Visual Studio or Python toolchain is
+needed even on Windows: every native dependency ships
 prebuilt binaries (the DuckDB backend uses
 [`@duckdb/node-api`](https://www.npmjs.com/package/@duckdb/node-api),
 prebuilt NAPI bindings).
@@ -181,6 +133,33 @@ or `build-dev`):
 ```sh
 npm run test:e2e -w packages/tad-app          # dev-build Electron e2e
 node packages/tad-app/tools/packagedSmoke.js  # packaged-app smoke test
+```
+
+### Building the installers
+
+Installers are produced with
+[electron-builder](https://www.electron.build/) and land in
+`packages/tad-app/release/` (not checked in; a Windows installer alone
+is ~100 MB). After `npm install && npm run build`:
+
+```sh
+npm run dist:win     # NSIS installer (also supports silent installs: Tads.Setup.<v>.exe /S)
+npm run dist:mac     # dmg + zip; releases build both archs in CI (.github/workflows/release-macos.yml)
+npm run dist:linux   # deb + tar.bz2 (+ rpm if rpmbuild is installed)
+```
+
+electron-builder can only target the OS it runs on, so build each
+installer on its own platform (WSL works for the Linux one; macOS
+installers require a Mac, which is why releases build them on a GitHub
+Actions runner). `npm run pack` produces an unpacked runnable app
+(`packages/tad-app/release/win-unpacked/`) for smoke-testing without
+touching an installed copy.
+
+On macOS, to launch Tads from the terminal (`tad somefile.parquet`),
+symlink the bundled launcher script onto your PATH:
+
+```sh
+ln -s "/Applications/Tads.app/Contents/Resources/tad.sh" /usr/local/bin/tad
 ```
 
 ## Repository layout
