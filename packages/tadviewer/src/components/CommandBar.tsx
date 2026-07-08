@@ -72,6 +72,16 @@ function completionSpan(
   };
 }
 
+function longestCommonPrefix(names: string[]): string {
+  let prefix = names[0];
+  for (const name of names.slice(1)) {
+    while (!name.startsWith(prefix)) {
+      prefix = prefix.slice(0, -1);
+    }
+  }
+  return prefix;
+}
+
 /**
  * An open variable-completion menu: the input text surrounding the
  * token being completed, the candidate variables, and the highlighted
@@ -199,7 +209,8 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
 
   /**
    * Tab pressed with no menu open: a unique match completes in place;
-   * several matches open the dropdown menu to pick from.
+   * several matches first extend the typed prefix to their longest
+   * common prefix, then open the dropdown menu to pick from.
    */
   const completeVariable = (caret: number): boolean => {
     const span = completionSpan(inputValue, caret);
@@ -224,6 +235,17 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
         before.length + rendered.length
       );
       return true;
+    }
+    const quoted = inputValue[span.start] === "`";
+    let shared = longestCommonPrefix(matches);
+    if (!quoted) {
+      // outside backticks only bare-identifier characters survive
+      // re-parsing on the next Tab, so stop the extension there
+      shared = shared.match(/^[A-Za-z0-9_]*/)![0];
+    }
+    if (shared.length > span.prefix.length) {
+      const extended = quoted ? "`" + shared : shared;
+      setInputWithCaret(before + extended + after, before.length + extended.length);
     }
     setCompletionMenu({ before, after, matches, index: 0 });
     return true;

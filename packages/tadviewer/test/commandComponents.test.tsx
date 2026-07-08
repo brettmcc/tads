@@ -251,8 +251,9 @@ describe("CommandBar", () => {
     input.setSelectionRange(input.value.length, input.value.length);
     fireEvent.keyDown(input, { key: "Tab" });
 
-    // input is untouched until a candidate is accepted
-    expect(input.value).toBe("sum pr");
+    // the typed prefix extends to the longest common prefix of the
+    // candidates while the menu stays open
+    expect(input.value).toBe("sum price");
     const items = screen.getAllByTestId("command-completion-item");
     expect(items.map((it) => it.textContent)).toEqual([
       "price",
@@ -278,14 +279,39 @@ describe("CommandBar", () => {
       ["price_usd", "DOUBLE"],
     ]);
     renderHarness(multiSchema);
-    const input = typeCommand("sum pr");
+    // "price" is already the longest common prefix, so Tab only opens the menu
+    const input = typeCommand("sum price");
     input.setSelectionRange(input.value.length, input.value.length);
     fireEvent.keyDown(input, { key: "Tab" });
     expect(screen.getByTestId("command-completion-menu")).not.toBeNull();
 
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByTestId("command-completion-menu")).toBeNull();
-    expect(input.value).toBe("sum pr");
+    expect(input.value).toBe("sum price");
+  });
+
+  test("Tab extends to the longest common prefix and keeps the menu open", () => {
+    const multiSchema = mkSchema([
+      ["google_labels1", "VARCHAR"],
+      ["google_labels2", "VARCHAR"],
+      ["google_labels3", "VARCHAR"],
+      ["google_labels4", "VARCHAR"],
+      ["google_labels5", "VARCHAR"],
+    ]);
+    renderHarness(multiSchema);
+    const input = typeCommand("bro google_la");
+    input.setSelectionRange(input.value.length, input.value.length);
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect(input.value).toBe("bro google_labels");
+    const items = screen.getAllByTestId("command-completion-item");
+    expect(items.length).toBe(5);
+
+    // picking a candidate still replaces the whole token
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("bro google_labels2");
+    expect(screen.queryByTestId("command-completion-menu")).toBeNull();
   });
 
   test("clicking a completion menu item inserts it", () => {
