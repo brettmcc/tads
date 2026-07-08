@@ -126,10 +126,12 @@ The build is unsigned, so SmartScreen may warn on first run: click
 
 ### macOS (Apple Silicon or Intel)
 
-Download `Tads-<version>.dmg` from
-[Releases](https://github.com/brettmcc/tads/releases) (it is built on a
+Download the dmg from
+[Releases](https://github.com/brettmcc/tads/releases) —
+`Tads-<version>-arm64.dmg` for Apple Silicon (M1 and later),
+`Tads-<version>.dmg` for Intel Macs (both are built on a
 macOS GitHub Actions runner by
-[`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml)),
+[`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml)) —
 or build it on a Mac:
 
 ```sh
