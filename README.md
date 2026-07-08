@@ -70,16 +70,21 @@ npm start -- data.parquet   # launch the app on a file
 
 ## Installing Tads
 
-Installers are produced with [electron-builder](https://www.electron.build/)
-and land in `packages/tad-app/release/`. They are not checked into the
-repository (a Windows installer alone is ~190 MB) — build them from
-source with the commands below, or download one from the project's
-GitHub Releases page if a release has been published.
+**Casual users: download a prebuilt installer from
+[GitHub Releases](https://github.com/brettmcc/tads/releases)** — no
+command line or build step needed. Each release carries a Windows
+`.exe`, a macOS `.dmg` (built by the `release-macos` CI workflow), and
+Linux `.deb` / `.tar.bz2` packages.
 
-electron-builder can only build installers for the OS it runs on
-(macOS installers in particular require a Mac), so build each
-platform's installer on that platform. On every platform the build
-prerequisites are the same: **Node >= 24** and npm >= 10, then:
+To build an installer yourself instead, the per-platform instructions
+are below. Installers are produced with
+[electron-builder](https://www.electron.build/) and land in
+`packages/tad-app/release/`; they are not checked into the repository
+(a Windows installer alone is ~100 MB). electron-builder can only
+build installers for the OS it runs on (macOS installers in particular
+require a Mac), so build each platform's installer on that platform.
+On every platform the build prerequisites are the same: **Node >= 24**
+and npm >= 10, then:
 
 ```sh
 npm install
@@ -87,6 +92,18 @@ npm run build
 ```
 
 ### Windows 11 (and Windows 10)
+
+Install with winget (pending review in
+[microsoft/winget-pkgs#399350](https://github.com/microsoft/winget-pkgs/pull/399350);
+available once that merges):
+
+```powershell
+winget install BrettMcCully.Tads
+```
+
+or download `Tads.Setup.<version>.exe` from
+[Releases](https://github.com/brettmcc/tads/releases), or build it
+yourself:
 
 ```powershell
 npm run dist:win   # -> packages\tad-app\release\Tads Setup <version>.exe
@@ -109,7 +126,11 @@ The build is unsigned, so SmartScreen may warn on first run: click
 
 ### macOS (Apple Silicon or Intel)
 
-On a Mac:
+Download `Tads-<version>.dmg` from
+[Releases](https://github.com/brettmcc/tads/releases) (it is built on a
+macOS GitHub Actions runner by
+[`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml)),
+or build it on a Mac:
 
 ```sh
 npm run dist:mac      # -> packages/tad-app/release/Tads-<version>.dmg (+ .zip)
@@ -132,19 +153,21 @@ bundled launcher script onto your PATH:
 ln -s "/Applications/Tads.app/Contents/Resources/tad.sh" /usr/local/bin/tad
 ```
 
-### Linux (Debian/Ubuntu, Fedora/RHEL, other)
+### Linux (Debian/Ubuntu, other)
 
-On a Linux machine:
+Download `tads_<version>_amd64.deb` or the portable `.tar.bz2` from
+[Releases](https://github.com/brettmcc/tads/releases), or build them on
+a Linux machine (WSL works):
 
 ```sh
 npm run dist:linux    # -> .deb, .rpm and .tar.bz2 in packages/tad-app/release/
 ```
 
-Install the package for your distribution:
+(the `.rpm` target additionally requires `rpmbuild` to be installed and
+is not part of published releases). Install the `.deb` with:
 
 ```sh
-sudo apt install ./packages/tad-app/release/tads_<version>_amd64.deb   # Debian/Ubuntu
-sudo dnf install ./packages/tad-app/release/tads-<version>.x86_64.rpm  # Fedora/RHEL
+sudo apt install ./tads_<version>_amd64.deb
 ```
 
 or unpack the `.tar.bz2` anywhere and run the `tads` binary inside it.
