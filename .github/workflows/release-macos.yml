@@ -33,7 +33,9 @@ jobs:
         run: npm run build
 
       - name: Build macOS installers (arm64 + x64)
-        run: npm run dist:mac -- --arm64 --x64
+        # invoke the workspace script directly: args after -- don't survive
+        # the root script's nested "npm run -w" indirection
+        run: npm run dist:mac -w packages/tad-app -- --arm64 --x64
         env:
           # unsigned build: no signing identity, and tools/notarize.js
           # skips notarization when APPLEID is not set
