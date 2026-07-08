@@ -32,8 +32,8 @@ jobs:
       - name: Build packages
         run: npm run build
 
-      - name: Build macOS installer
-        run: npm run dist:mac
+      - name: Build macOS installers (arm64 + x64)
+        run: npm run dist:mac -- --arm64 --x64
         env:
           # unsigned build: no signing identity, and tools/notarize.js
           # skips notarization when APPLEID is not set
