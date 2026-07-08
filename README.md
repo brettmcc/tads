@@ -60,14 +60,6 @@ intentionally out of scope.
 See [doc/stata-commands.md](doc/stata-commands.md) for the complete
 language reference, session semantics, and safety guarantees.
 
-## Quick start
-
-```sh
-npm install        # installs all workspace packages
-npm run build      # builds reltab, aggtree, drivers, tadviewer, tad-app
-npm start -- data.parquet   # launch the app on a file
-```
-
 ## Installing Tads
 
 **Casual users: download a prebuilt installer from
