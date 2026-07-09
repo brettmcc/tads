@@ -221,7 +221,11 @@ export const openDialog = async (
     filters: [
       {
         name: "data files",
-        extensions: dataFileExtensions.concat(["tad", "sqlite", "duckdb"]),
+        // Electron filter extensions cannot contain dots, so compound
+        // extensions like "csv.gz" must be reduced to their last segment
+        extensions: Array.from(
+          new Set(dataFileExtensions.map((ext) => ext.split(".").pop()!))
+        ).concat(["tad", "sqlite", "duckdb"]),
       },
       /*
       {

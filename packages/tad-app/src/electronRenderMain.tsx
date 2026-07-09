@@ -153,10 +153,25 @@ const init = async () => {
     );
     const tRender = performance.now();
     log.debug("Time to initial render: ", (tRender - tStart) / 1000, " sec");
-    pivotRequester = new PivotRequester(stateRef);
+    // Without an error callback, failures while evaluating a view (e.g. a
+    // file DuckDB cannot import) leave an empty grid with no explanation.
+    pivotRequester = new PivotRequester(stateRef, (err: Error) =>
+      remoteErrorDialog("Error opening data source", err.message)
+    );
 
     const openParams = (window as any).openParams as OpenParams | undefined;
-    await openFromOpenParams(openParams, stateRef);
+    try {
+      await openFromOpenParams(openParams, stateRef);
+    } catch (openErr: any) {
+      // a file we can't read shouldn't take the whole app down; show the
+      // error and leave the (empty) window open
+      console.error(
+        "error opening initial file: ",
+        openErr.message,
+        openErr.stack
+      );
+      remoteErrorDialog("Error opening file", openErr.message);
+    }
 
     ipcRenderer.on("request-serialize-app-state", (event, req) => {
       const { requestId } = req;
@@ -218,7 +233,10 @@ const init = async () => {
     });
     ipcRenderer.on("open-file", (event, req) => {
       const { openParams } = req;
-      openFromOpenParams(openParams, stateRef);
+      openFromOpenParams(openParams, stateRef).catch((err: any) => {
+        console.error("open-file failed: ", err.message, err.stack);
+        remoteErrorDialog("Error opening file", err.message);
+      });
     });
 
     document.addEventListener("copy", function (e) {});

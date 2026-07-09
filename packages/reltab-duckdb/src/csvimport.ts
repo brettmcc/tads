@@ -2,6 +2,7 @@
  * Import CSV files into DuckDb
  */
 
+import * as fs from "fs";
 import * as log from "loglevel";
 import * as path from "path";
 import prettyHRTime from "pretty-hrtime";
@@ -52,6 +53,27 @@ const genTableName = (pathname: string): string => {
 };
 
 /**
+ * Guess the encoding of a file DuckDB rejected as non-UTF-8: a UTF-16
+ * byte-order mark identifies UTF-16 (what Excel and Stata export);
+ * anything else is treated as latin-1, which accepts all byte values.
+ */
+const sniffFileEncoding = (filePath: string): string => {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    const bom = Buffer.alloc(2);
+    fs.readSync(fd, bom, 0, 2, 0);
+    fs.closeSync(fd);
+    if ((bom[0] === 0xff && bom[1] === 0xfe) || (bom[0] === 0xfe && bom[1] === 0xff)) {
+      return "utf-16";
+    }
+  } catch (err) {
+    // remote or unreadable file: fall through to the permissive default
+    console.log("sniffFileEncoding: could not read file header: ", err);
+  }
+  return "latin-1";
+};
+
+/**
  * Native import using DuckDB's built-in import facilities.
  */
 export const nativeCSVImport = async (
@@ -67,24 +89,37 @@ export const nativeCSVImport = async (
     if (!tableName) {
       tableName = genTableName(filePath);
     }
-    const query = `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM read_csv_auto('${filePath}')`;
+    const mkImportQuery = (opts: string[]): string => {
+      const args = [`'${filePath}'`, ...opts].join(", ");
+      return `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM read_csv_auto(${args})`;
+    };
     try {
-      const resRows = await queryRows(dbConn, query);
-      const info = resRows[0];
+      await queryRows(dbConn, mkImportQuery([]));
     } catch (err) {
       console.log("caught exception while importing: ", err);
-      console.log("retrying with SAMPLE_SIZE=-1:");
-      const noSampleQuery = `CREATE OR REPLACE TABLE ${tableName} AS SELECT * FROM read_csv_auto('${filePath}', sample_size=-1)`;
-      try {
-        const resRows = await queryRows(dbConn, noSampleQuery);
-        const info = resRows[0];
-        log.debug(
-          'nativeCSVImport: info.Count: "' + info.Count + '", type: ',
-          typeof info.Count
-        );
-      } catch (noSampleErr) {
-        console.log("caught exception with no sampling: ", noSampleErr);
-        throw noSampleErr;
+      // DuckDB reads only UTF-8 by default; non-UTF-8 files (e.g. the
+      // UTF-16 CSVs Excel and Stata export) fail with a "not utf-8
+      // encoded" error and need an explicit encoding. Other failures
+      // are typically type-sniffing errors, where a full scan helps.
+      const msg = String((err as any)?.message ?? err);
+      const retryOptions = msg.includes("not utf-8 encoded")
+        ? [[`encoding='${sniffFileEncoding(filePath)}'`]]
+        : [["sample_size=-1"]];
+      let imported = false;
+      let lastErr = err;
+      for (const opts of retryOptions) {
+        console.log("retrying import with: ", opts.join(", "));
+        try {
+          await queryRows(dbConn, mkImportQuery(opts));
+          imported = true;
+          break;
+        } catch (retryErr) {
+          console.log("retry failed: ", retryErr);
+          lastErr = retryErr;
+        }
+      }
+      if (!imported) {
+        throw lastErr;
       }
     }
   } finally {
