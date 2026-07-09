@@ -67,8 +67,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Stata Browse-style row-number column; click a number to select the row */
-.slick-cell.row-number-cell {
+/* Stata Browse-style row-number column; click a number to select the row.
+   Selectors are scoped under .slickgrid-container so they outrank the
+   theme's zebra-striping rule (.slickgrid-container .slick-row.odd
+   .slick-cell), which otherwise wins on gray rows. */
+.slickgrid-container .slick-row .slick-cell.row-number-cell {
   background: #f0f0f0;
   color: #666666;
   text-align: right;
@@ -79,13 +82,13 @@
 }
 
 /* mild highlight of the row stub and column header of the active cell */
-.slick-cell.row-number-cell.row-stub-active {
+.slickgrid-container .slick-row .slick-cell.row-number-cell.row-stub-active {
   background: #cfe3f7;
   color: #17416b;
   font-weight: 600;
 }
 
-.slick-header-column.col-header-active {
+.slickgrid-container .slick-header-column.col-header-active {
   background: #cfe3f7;
 }
 
