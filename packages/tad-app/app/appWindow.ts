@@ -19,6 +19,7 @@ import {
   resolvePath,
 } from "reltab";
 import { dataFileExtensions, isIPFSPath } from "reltab-fs";
+import { profLog } from "./startupProf";
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -67,6 +68,7 @@ export function runPostInit(win: BrowserWindow, fn: () => void) {
 }
 
 ipcMain.on("render-init-complete", (event: IpcMainEvent) => {
+  profLog("render-init-complete");
   markInitialized(event.sender.id);
 });
 
@@ -103,6 +105,10 @@ const create = async (openParams: OpenParams): Promise<BrowserWindow> => {
     height: 980,
     x: 0,
     y: 0,
+    // don't show until the renderer has painted; avoids a long blank
+    // white window during startup
+    show: false,
+    backgroundColor: "#ffffff",
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -117,6 +123,7 @@ const create = async (openParams: OpenParams): Promise<BrowserWindow> => {
   }
 
   const win = new BrowserWindow(winProps);
+  profLog("BrowserWindow created");
 
   if (openCount === 0) {
     // first window:
@@ -132,11 +139,10 @@ const create = async (openParams: OpenParams): Promise<BrowserWindow> => {
   });
   win.loadURL(targetUrl);
 
-  // Open the DevTools.
-  win.webContents.openDevTools({
-    mode: "bottom",
+  win.once("ready-to-show", () => {
+    profLog("ready-to-show");
+    win.show();
   });
-  win.webContents.closeDevTools();
 
   // Emitted when the window is closed.
   win.on("closed", function () {

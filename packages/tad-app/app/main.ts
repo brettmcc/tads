@@ -12,6 +12,7 @@ import "reltab-duckdb";
 import * as reltabFS from "reltab-fs";
 import "reltab-fs";
 import * as setup from "./setup";
+import { profLog } from "./startupProf";
 import * as quickStart from "./quickStart";
 import * as appMenu from "./appMenu";
 import * as appWindow from "./appWindow";
@@ -417,10 +418,12 @@ const initApp =
           // initialization and is ready to create browser windows.
           // Some APIs can only be used after this event occurs.
           app.on("ready", async () => {
+            profLog("app ready");
             // const startMsg = `pid ${process.pid}: Tad started, version: ${app.getVersion()}`
             // log.log(startMsg)
             // dialog.showMessageBox({ message: startMsg })
             appInit(options);
+            profLog("appInit done");
 
             if (!noSrcFile) {
               openSrcFiles(options);
@@ -468,6 +471,7 @@ const initApp =
   };
 
 const main = () => {
+  profLog("main() entry");
   // turn off console logging on win32:
   if (process.platform === "win32") {
     log.transports.file.level = false;

@@ -74,10 +74,10 @@ function config(nodeEnv) {
     optimization: {},
     plugins: [
       new webpack.IgnorePlugin({ resourceRegExp: /^\.\/stores\/appStore$/ }),
+      // define only NODE_ENV (not all of process.env) so real environment
+      // variables remain readable at runtime in the Electron processes
       new webpack.DefinePlugin({
-        "process.env": {
-          NODE_ENV: JSON.stringify(nodeEnv),
-        },
+        "process.env.NODE_ENV": JSON.stringify(nodeEnv),
       }),
     ],
   };
