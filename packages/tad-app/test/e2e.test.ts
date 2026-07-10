@@ -339,6 +339,13 @@ test("in-memory toggle materializes the parquet dataset and back", async () => {
     { timeout: 30000 }
   );
 
+  // tiny fixture: fully in memory, so no spill/low-RAM warning icon and
+  // no pre-flight alert should have appeared
+  expect(
+    await page.locator('[data-testid="footer-materialize-warning"]').count()
+  ).toBe(0);
+  expect(await page.locator(".bp4-alert").count()).toBe(0);
+
   // commands keep working against the materialized table
   await runCommand("count");
   const entries = page.locator('[data-testid="result-entry"]');

@@ -150,9 +150,12 @@ Parquet files open instantly as a zero-copy view: every command re-reads the
 file, which DuckDB parallelizes across row groups. For repeated statistics on
 the same dataset, the **In memory** toggle in the footer loads the data into
 an in-memory DuckDB table (using RAM roughly proportional to the uncompressed
-data size); toggle it off to release the memory. DuckDB is configured with one
-less thread than the machine's core count so the grid stays responsive while a
-heavy statistic runs.
+data size); toggle it off to release the memory. If the estimated size exceeds
+the memory currently free, Tads asks before loading. While loaded, a warning
+icon appears next to the toggle if part of the copy has spilled to disk or
+system memory is running low — hover it for the explanation. DuckDB is
+configured with one less thread than the machine's core count so the grid
+stays responsive while a heavy statistic runs.
 
 ## Safety and limits
 
