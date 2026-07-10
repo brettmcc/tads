@@ -1,5 +1,11 @@
 ; Custom NSIS install steps for Tads.
 ;
+; Without a DPI-aware manifest Windows bitmap-stretches the installer window
+; on high-DPI displays, so it renders blurry on 4K screens. The bundled NSIS
+; (3.0.4.1) predates ManifestDPIAwareness/PerMonitorV2, so system-DPI aware
+; is the best available. Applies to the uninstaller too.
+ManifestDPIAware true
+;
 ; electron-builder's fileAssociations config already sets each extension's
 ; per-user default ProgId (with a *_backup of any previous value). Windows
 ; 10/11 additionally require an Applications registration with SupportedTypes
