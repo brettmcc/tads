@@ -1,5 +1,4 @@
 import * as reltab from "reltab";
-import * as csv from "fast-csv";
 import * as fs from "fs";
 import { BrowserWindow, dialog } from "electron";
 import { DbDataSource } from "reltab";
@@ -84,6 +83,8 @@ const exportCSV = async (
     exportPathBaseName,
     exportPercent,
   });
+  // required lazily: fast-csv is only needed for exports, not at startup
+  const csv = require("fast-csv") as typeof import("fast-csv");
   const csvStream = csv.format({
     headers: true,
   });

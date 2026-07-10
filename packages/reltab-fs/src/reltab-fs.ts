@@ -24,7 +24,8 @@ import {
 import * as reltabDuckDB from "reltab-duckdb";
 import { DuckDBDriver } from "reltab-duckdb";
 
-export const dataFileExtensions = ["csv", "tsv", "parquet", "csv.gz", "tsv.gz"];
+export { dataFileExtensions, isIPFSPath } from "./defs";
+import { dataFileExtensions, isIPFSPath } from "./defs";
 
 interface ImportedFileInfo {
   baseName: string;
@@ -63,16 +64,6 @@ function extNameEx(path: string): string {
   const ext = path.slice(dotIndex);
   return ext;
 }
-
-const ipfsPathPrefixes = ["s3://", "https://"];
-export const isIPFSPath = (pathname: string): boolean => {
-  for (const prefix of ipfsPathPrefixes) {
-    if (pathname.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
-};
 
 interface ImportInfo {
   tableName: string; // table name used to import this table

@@ -7,11 +7,8 @@ import getUsage from "command-line-usage";
 import log from "electron-log";
 import * as logLevel from "loglevel";
 import * as reltab from "reltab";
-import * as reltabDuckDB from "reltab-duckdb";
-import "reltab-duckdb";
-import * as reltabFS from "reltab-fs";
-import "reltab-fs";
 import * as setup from "./setup";
+import { loadDataProviders } from "./dataProviders";
 import { profLog } from "./startupProf";
 import * as quickStart from "./quickStart";
 import * as appMenu from "./appMenu";
@@ -33,7 +30,7 @@ import {
   DataSourcePath,
   DbDataSource,
 } from "reltab";
-import { isIPFSPath } from "reltab-fs";
+import { isIPFSPath } from "reltab-fs/dist/defs";
 
 require("console.table"); // Can insert delay in promise chain by:
 // delay(amount).then(() => ...)
@@ -69,6 +66,9 @@ const initMainAsync = async (options: any): Promise<void> => {
   if (mainInitialized) {
     return;
   }
+  // data providers must be registered before we serve any data requests;
+  // normally already loaded (or loading) in the background by now
+  await loadDataProviders();
   let rtOptions: any = {};
 
   if (options["show-queries"]) {
@@ -446,6 +446,15 @@ const initApp =
             }
 
             isReady = true;
+
+            // start loading data providers (DuckDB native library) in the
+            // background while the renderer loads its bundle
+            loadDataProviders().catch((err) => {
+              log.error("error loading data providers: ", err);
+              reportFatalError(
+                "Error loading data providers: " + (err as Error).message
+              );
+            });
           });
         } else {
           log.debug(
