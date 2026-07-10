@@ -68,6 +68,7 @@ function extNameEx(path: string): string {
 interface ImportInfo {
   tableName: string; // table name used to import this table
   importModTime?: Date; // mod time of the file at time of import, as returned from fs.stat() (iff not an IPFS path)
+  materialized?: boolean; // parquet only: data copied into an in-memory table
 }
 
 // mapping from pathnames to imported table names:
@@ -113,16 +114,54 @@ export class FSDriver implements DbDriver {
   }
 
   async getDatasetInfo(dsPath: DataSourcePath): Promise<DatasetInfo> {
+    const targetPath = this.getTargetPath(dsPath);
     const sourceSizeBytes = this.isIPFS
       ? null
-      : await reltabDuckDB.statFileSizeOrNull(
-          this.getTargetPath(dsPath),
-          true
-        );
+      : await reltabDuckDB.statFileSizeOrNull(targetPath, true);
+    const importInfo = this.importMap[targetPath];
+    // only local parquet files toggle between a parquet_scan view and an
+    // in-memory table; CSV imports are always fully loaded already
+    const canMaterialize =
+      !this.isIPFS &&
+      importInfo !== undefined &&
+      path.extname(targetPath) === ".parquet";
     return {
       sourceSizeBytes,
       memorySizeBytes: await this.dbc.getMemoryUsageBytes(),
+      canMaterialize,
+      materialized: importInfo?.materialized === true,
     };
+  }
+
+  async setMaterialized(
+    dsPath: DataSourcePath,
+    materialized: boolean
+  ): Promise<void> {
+    const targetPath = this.getTargetPath(dsPath);
+    // ensure the file has been imported (also handles stale re-import)
+    await this.getTableName(dsPath);
+    const importInfo = this.importMap[targetPath];
+    if (this.isIPFS || path.extname(targetPath) !== ".parquet") {
+      throw new Error(
+        "setMaterialized: only local parquet files can be loaded into memory"
+      );
+    }
+    if ((importInfo.materialized === true) === materialized) {
+      return;
+    }
+    if (materialized) {
+      await reltabDuckDB.materializeParquetTable(
+        this.dbc.db,
+        importInfo.tableName
+      );
+    } else {
+      await reltabDuckDB.dematerializeParquetTable(
+        this.dbc.db,
+        importInfo.tableName,
+        targetPath
+      );
+    }
+    importInfo.materialized = materialized;
   }
 
   getTableSchema(tableName: string): Promise<Schema> {
@@ -227,11 +266,25 @@ export class FSDriver implements DbDriver {
           const extName = path.extname(targetPath);
           const tableName = importInfo.tableName;
           if (extName === ".parquet") {
-            await reltabDuckDB.nativeParquetImport(
-              this.dbc.db,
-              targetPath,
-              tableName
-            );
+            if (importInfo.materialized) {
+              // drop the stale in-memory copy (restoring the view over
+              // the updated file), then re-materialize from it
+              await reltabDuckDB.dematerializeParquetTable(
+                this.dbc.db,
+                tableName,
+                targetPath
+              );
+              await reltabDuckDB.materializeParquetTable(
+                this.dbc.db,
+                tableName
+              );
+            } else {
+              await reltabDuckDB.nativeParquetImport(
+                this.dbc.db,
+                targetPath,
+                tableName
+              );
+            }
           } else {
             await reltabDuckDB.nativeCSVImport(
               this.dbc.db,

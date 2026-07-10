@@ -15,6 +15,7 @@ import {
   DbConnGetTableNameRequest,
   DbConnRunReadOnlySqlRequest,
   DbConnGetDatasetInfoRequest,
+  DbConnSetMaterializedRequest,
   ReltabConnection,
 } from "./Connection";
 import { ReadOnlySqlResult } from "../readOnlySql";
@@ -141,6 +142,16 @@ const dbConnGetDatasetInfo = async (
   return conn.getDatasetInfo(req.path);
 };
 
+const dbConnSetMaterialized = async (
+  conn: DataSourceConnection,
+  req: DbConnSetMaterializedRequest
+): Promise<void> => {
+  const hrstart = process.hrtime();
+  await conn.setMaterialized(req.path, req.materialized);
+  const elapsed = process.hrtime(hrstart);
+  log.info("dbConnSetMaterialized: completed in", prettyHRTime(elapsed));
+};
+
 const dbConnGetColumnStatsMap = async (
   conn: DataSourceConnection,
   req: DbConnGetColumnStatsMapRequest
@@ -184,6 +195,7 @@ const handleDbConnGetColumnStatsMap = mkEngineReqHandler(
 const handleDbConnRunReadOnlySql = mkEngineReqHandler(dbConnRunReadOnlySql);
 const handleDbConnInterrupt = mkEngineReqHandler(dbConnInterrupt);
 const handleDbConnGetDatasetInfo = mkEngineReqHandler(dbConnGetDatasetInfo);
+const handleDbConnSetMaterialized = mkEngineReqHandler(dbConnSetMaterialized);
 
 let providerRegistry: { [providerName: string]: DataSourceProvider } = {};
 
@@ -365,6 +377,10 @@ export const serverInit = (ts: TransportServer) => {
   ts.registerInvokeHandler(
     "DataSourceConnection.getDatasetInfo",
     exceptionHandler(handleDbConnGetDatasetInfo)
+  );
+  ts.registerInvokeHandler(
+    "DataSourceConnection.setMaterialized",
+    exceptionHandler(handleDbConnSetMaterialized)
   );
 };
 

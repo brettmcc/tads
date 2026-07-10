@@ -50,6 +50,13 @@ export interface DatasetInfo {
   sourceSizeBytes: number | null;
   /** current DuckDB buffer-manager memory attributed to the connection */
   memorySizeBytes: number | null;
+  /**
+   * true when this dataset supports toggling between its file-backed
+   * form and a full in-memory copy (see setMaterialized)
+   */
+  canMaterialize?: boolean;
+  /** current state of the in-memory copy toggle */
+  materialized?: boolean;
 }
 
 export interface DataSourceNode {
@@ -110,6 +117,13 @@ export interface DbDriver {
 
   /** Return lightweight storage metrics for a dataset path. */
   getDatasetInfo?(path: DataSourcePath): Promise<DatasetInfo>;
+
+  /**
+   * Load the dataset into an in-memory table (true) or restore its
+   * file-backed form (false). Only meaningful when getDatasetInfo
+   * reports canMaterialize.
+   */
+  setMaterialized?(path: DataSourcePath, materialized: boolean): Promise<void>;
 }
 
 /**
@@ -139,6 +153,13 @@ export interface DataSourceConnection {
 
   /** Return source-file and in-memory size metrics when available. */
   getDatasetInfo(path: DataSourcePath): Promise<DatasetInfo>;
+
+  /**
+   * Load the dataset into an in-memory table (true) or restore its
+   * file-backed form (false). Only supported when getDatasetInfo
+   * reports canMaterialize; throws otherwise.
+   */
+  setMaterialized(path: DataSourcePath, materialized: boolean): Promise<void>;
 
   getTableSchema(tableName: string): Promise<Schema>;
 
@@ -238,6 +259,18 @@ export class DbDataSource implements DataSourceConnection {
       return this.db.getDatasetInfo(path);
     }
     return { sourceSizeBytes: null, memorySizeBytes: null };
+  }
+
+  async setMaterialized(
+    path: DataSourcePath,
+    materialized: boolean
+  ): Promise<void> {
+    if (!this.db.setMaterialized) {
+      throw new Error(
+        "setMaterialized: not supported by this data source"
+      );
+    }
+    await this.db.setMaterialized(path, materialized);
   }
 
   async rowCount(query: QueryExp, options?: EvalQueryOptions): Promise<number> {

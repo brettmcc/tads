@@ -43,6 +43,11 @@ export interface DbConnGetDatasetInfoRequest {
   path: DataSourcePath;
 }
 
+export interface DbConnSetMaterializedRequest {
+  path: DataSourcePath;
+  materialized: boolean;
+}
+
 export interface DbConnGetColumnStatsMapRequest {
   queryStr: string; // JSON-encoded QueryExp
 }
@@ -167,6 +172,19 @@ class RemoteDataSourceConnection implements DataSourceConnection {
       this.tconn,
       this.sourceId,
       "getDatasetInfo",
+      req
+    ).then(decodeResult);
+  }
+
+  async setMaterialized(
+    path: DataSourcePath,
+    materialized: boolean
+  ): Promise<void> {
+    const req: DbConnSetMaterializedRequest = { path, materialized };
+    await invokeDbFunction(
+      this.tconn,
+      this.sourceId,
+      "setMaterialized",
       req
     ).then(decodeResult);
   }

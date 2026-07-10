@@ -171,3 +171,61 @@ export const nativeParquetImport = async (
 
   return tableName;
 };
+
+/**
+ * Replace the parquet-backed VIEW `tableName` with an in-memory TABLE of
+ * the same name holding a full copy of the data, so subsequent queries
+ * read DuckDB's native storage instead of re-decoding the parquet file.
+ * The copy is built while the view still exists and the swap runs in one
+ * transaction, so concurrent queries always see a queryable `tableName`.
+ */
+export const materializeParquetTable = async (
+  db: DuckDBDatabase,
+  tableName: string
+): Promise<void> => {
+  const start = process.hrtime();
+  const dbConn = await db.connect();
+  try {
+    const tmpName = `${tableName}_tad_mat`;
+    await execStatements(
+      dbConn,
+      `BEGIN TRANSACTION;
+       CREATE OR REPLACE TABLE ${tmpName} AS SELECT * FROM ${tableName};
+       DROP VIEW ${tableName};
+       ALTER TABLE ${tmpName} RENAME TO ${tableName};
+       COMMIT;`
+    );
+  } finally {
+    closeConnection(dbConn);
+  }
+  const [es, ens] = process.hrtime(start);
+  log.info(
+    "DuckDB materializeParquetTable: completed in %ds %dms",
+    es,
+    ens / 1e6
+  );
+};
+
+/**
+ * Undo materializeParquetTable: drop the in-memory TABLE `tableName` and
+ * restore the VIEW over parquet_scan of `filePath`, releasing the memory
+ * held by the copy.
+ */
+export const dematerializeParquetTable = async (
+  db: DuckDBDatabase,
+  tableName: string,
+  filePath: string
+): Promise<void> => {
+  const dbConn = await db.connect();
+  try {
+    await execStatements(
+      dbConn,
+      `BEGIN TRANSACTION;
+       DROP TABLE ${tableName};
+       CREATE VIEW ${tableName} AS SELECT * FROM parquet_scan('${filePath}');
+       COMMIT;`
+    );
+  } finally {
+    closeConnection(dbConn);
+  }
+};
