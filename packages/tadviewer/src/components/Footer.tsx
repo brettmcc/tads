@@ -1,5 +1,12 @@
 import * as React from "react";
-import { Switch } from "@blueprintjs/core";
+import {
+  Alert,
+  Icon,
+  OverlayToaster,
+  Position,
+  Switch,
+  ToasterInstance,
+} from "@blueprintjs/core";
 import * as reltab from "reltab";
 import * as actions from "../actions";
 import { FilterEditor } from "./FilterEditor";
@@ -14,6 +21,26 @@ export interface FooterProps {
   stateRef: StateRef<AppState>;
   onFilter?: (filterExp: reltab.FilterExp) => void;
   rightFooterSlot?: JSX.Element;
+}
+
+/**
+ * Warn before materializing when the estimated in-memory size exceeds
+ * this fraction of currently free physical memory.
+ */
+const PREFLIGHT_FREE_MEM_FRACTION = 0.8;
+
+/**
+ * Show the live warning when free physical memory falls below this
+ * fraction of total while a dataset is held in memory.
+ */
+const LOW_FREE_MEM_FRACTION = 0.1;
+
+let footerToaster: ToasterInstance | null = null;
+function showErrorToast(message: string): void {
+  if (footerToaster == null) {
+    footerToaster = OverlayToaster.create({ position: Position.TOP });
+  }
+  footerToaster.show({ intent: "danger", icon: "error", message });
 }
 
 export function formatByteSize(bytes: number): string {
@@ -42,6 +69,8 @@ export const Footer: React.FunctionComponent<FooterProps> = (
   const [datasetInfo, setDatasetInfo] =
     useState<reltab.DatasetInfo | null>(null);
   const [materializing, setMaterializing] = useState(false);
+  const [preflightEstimate, setPreflightEstimate] =
+    useState<reltab.MaterializeEstimate | null>(null);
 
   // console.log("Footer: ", appState.toJS());
 
@@ -76,16 +105,21 @@ export const Footer: React.FunctionComponent<FooterProps> = (
     };
   }, [viewState.dbc, dsPath]);
 
-  const handleMaterializeToggle = async () => {
-    if (dsPath == null || datasetInfo == null || materializing) {
+  const runMaterialize = async (target: boolean) => {
+    if (dsPath == null) {
       return;
     }
-    const target = !datasetInfo.materialized;
     setMaterializing(true);
     try {
       await viewState.dbc.setMaterialized(dsPath, target);
     } catch (err) {
       console.error("setMaterialized failed: ", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      showErrorToast(
+        target
+          ? `Failed to load the dataset into memory: ${msg}`
+          : `Failed to release the in-memory copy: ${msg}`
+      );
     }
     try {
       setDatasetInfo(await viewState.dbc.getDatasetInfo(dsPath));
@@ -93,6 +127,31 @@ export const Footer: React.FunctionComponent<FooterProps> = (
       // keep the previous info; the poll will refresh it
     }
     setMaterializing(false);
+  };
+
+  const handleMaterializeToggle = async () => {
+    if (dsPath == null || datasetInfo == null || materializing) {
+      return;
+    }
+    const target = !datasetInfo.materialized;
+    if (target) {
+      // pre-flight sizing: confirm before a load that likely exceeds
+      // the memory headroom. Sizing is best-effort and never blocks.
+      try {
+        const est = await viewState.dbc.getMaterializeEstimate(dsPath);
+        if (
+          est.estimatedBytes != null &&
+          est.estimatedBytes >
+            est.systemFreeMemBytes * PREFLIGHT_FREE_MEM_FRACTION
+        ) {
+          setPreflightEstimate(est);
+          return;
+        }
+      } catch (err) {
+        console.warn("getMaterializeEstimate failed: ", err);
+      }
+    }
+    await runMaterialize(target);
   };
 
   const setExpandedState = (nextState: boolean) => {
@@ -184,6 +243,77 @@ export const Footer: React.FunctionComponent<FooterProps> = (
   if (datasetInfo?.memorySizeBytes != null) {
     sizeParts.push(`Memory ${formatByteSize(datasetInfo.memorySizeBytes)}`);
   }
+  // live health of the in-memory copy: spill to disk or a RAM squeeze
+  // both mean "in memory" is no longer delivering memory speed
+  const materializeWarnings: string[] = [];
+  if (datasetInfo?.materialized === true) {
+    const { spillBytes, systemFreeMemBytes, systemTotalMemBytes } =
+      datasetInfo;
+    if (spillBytes != null && spillBytes > 0) {
+      materializeWarnings.push(
+        `${formatByteSize(
+          spillBytes
+        )} of the in-memory copy is spilled to disk because the data exceeds DuckDB's memory budget. Commands touching that part run at disk speed.`
+      );
+    }
+    if (
+      systemFreeMemBytes != null &&
+      systemTotalMemBytes != null &&
+      systemFreeMemBytes < systemTotalMemBytes * LOW_FREE_MEM_FRACTION
+    ) {
+      materializeWarnings.push(
+        `System memory is low (${formatByteSize(
+          systemFreeMemBytes
+        )} free of ${formatByteSize(
+          systemTotalMemBytes
+        )}). The in-memory copy is competing with other programs and may be paged out; consider toggling it off.`
+      );
+    }
+  }
+  const materializeWarningIcon =
+    materializeWarnings.length === 0 ? null : (
+      <span
+        className="footer-materialize-warning"
+        data-testid="footer-materialize-warning"
+        title={materializeWarnings.join("\n\n")}
+      >
+        <Icon icon="warning-sign" intent="warning" size={14} />
+      </span>
+    );
+  const preflightAlert = (
+    <Alert
+      isOpen={preflightEstimate !== null}
+      intent="warning"
+      icon="warning-sign"
+      confirmButtonText="Load anyway"
+      cancelButtonText="Cancel"
+      onConfirm={() => {
+        setPreflightEstimate(null);
+        runMaterialize(true);
+      }}
+      onCancel={() => setPreflightEstimate(null)}
+    >
+      <p>
+        Loading this dataset into memory needs roughly{" "}
+        <b>
+          {preflightEstimate?.estimatedBytes != null
+            ? formatByteSize(preflightEstimate.estimatedBytes)
+            : "?"}
+        </b>
+        , but only{" "}
+        <b>
+          {preflightEstimate != null
+            ? formatByteSize(preflightEstimate.systemFreeMemBytes)
+            : "?"}
+        </b>{" "}
+        of system memory is currently free.
+      </p>
+      <p>
+        Loading may slow other programs or spill part of the data to
+        disk instead of holding it in memory.
+      </p>
+    </Alert>
+  );
   const materializeBlock =
     datasetInfo?.canMaterialize !== true ? null : (
       <div
@@ -191,6 +321,7 @@ export const Footer: React.FunctionComponent<FooterProps> = (
         data-testid="footer-materialize"
         title="Load the dataset into memory for faster commands and statistics; uses RAM proportional to the data size. Toggle off to release the memory and read from the file again."
       >
+        {materializeWarningIcon}
         <Switch
           checked={datasetInfo?.materialized === true}
           disabled={materializing}
@@ -233,6 +364,7 @@ export const Footer: React.FunctionComponent<FooterProps> = (
         </div>
       </div>
       {editorComponent}
+      {preflightAlert}
     </div>
   );
 };

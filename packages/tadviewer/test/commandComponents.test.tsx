@@ -5,7 +5,14 @@
  * the real oneref state container and command actions, with a stubbed
  * DataSourceConnection supplying canned SQL results.
  */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import * as Immutable from "immutable";
 import { mkRef, mutableGet, refContainer, StateRef, update } from "oneref";
 import * as React from "react";
@@ -63,9 +70,17 @@ const schema = mkSchema();
 /** canned summarize result for `sum a` (single wide aggregate row) */
 const sumRows: Row[] = [{ n_0: 3, mean_0: 2, sd_0: 1, min_0: 1, max_0: 3 }];
 const interruptMock = jest.fn(async (): Promise<void> => {});
-const getDatasetInfoMock = jest.fn(async () => ({
+const getDatasetInfoMock = jest.fn(async (): Promise<any> => ({
   sourceSizeBytes: 1536,
   memorySizeBytes: 5 * 1024 * 1024,
+}));
+const setMaterializedMock = jest.fn(
+  async (_path: any, _materialized: boolean): Promise<void> => {}
+);
+const getMaterializeEstimateMock = jest.fn(async (): Promise<any> => ({
+  estimatedBytes: 1024,
+  systemFreeMemBytes: 8 * 1024 ** 3,
+  systemTotalMemBytes: 16 * 1024 ** 3,
 }));
 
 function mkFakeDbc(): DataSourceConnection {
@@ -78,6 +93,8 @@ function mkFakeDbc(): DataSourceConnection {
     },
     interrupt: interruptMock,
     getDatasetInfo: getDatasetInfoMock,
+    setMaterialized: setMaterializedMock,
+    getMaterializeEstimate: getMaterializeEstimateMock,
   };
   return fake as DataSourceConnection;
 }
@@ -131,6 +148,8 @@ beforeEach(() => {
   resetEntryIds();
   interruptMock.mockClear();
   getDatasetInfoMock.mockClear();
+  setMaterializedMock.mockClear();
+  getMaterializeEstimateMock.mockClear();
 });
 
 describe("CommandBar", () => {
@@ -591,6 +610,122 @@ describe("Footer", () => {
     expect(formatByteSize(12)).toBe("12 B");
     expect(formatByteSize(1024)).toBe("1 KiB");
     expect(formatByteSize(1024 * 1024)).toBe("1 MiB");
+  });
+
+  const GIB = 1024 ** 3;
+  const matInfo = (over: object = {}) => ({
+    sourceSizeBytes: 1536,
+    memorySizeBytes: 5 * 1024 * 1024,
+    canMaterialize: true,
+    materialized: false,
+    spillBytes: null,
+    systemFreeMemBytes: 8 * GIB,
+    systemTotalMemBytes: 16 * GIB,
+    ...over,
+  });
+
+  async function renderFooterBlock(): Promise<HTMLElement> {
+    const appState = mkAppState();
+    const stateRef = mkRef(appState);
+    render(<Footer appState={appState} stateRef={stateRef} />);
+    return await screen.findByTestId("footer-materialize");
+  }
+
+  test("switch materializes immediately when the estimate fits", async () => {
+    getDatasetInfoMock.mockResolvedValue(matInfo());
+    getMaterializeEstimateMock.mockResolvedValue({
+      estimatedBytes: 1 * GIB,
+      systemFreeMemBytes: 8 * GIB,
+      systemTotalMemBytes: 16 * GIB,
+    });
+    const block = await renderFooterBlock();
+    fireEvent.click(within(block).getByRole("checkbox"));
+    await waitFor(() =>
+      expect(setMaterializedMock).toHaveBeenCalledWith(
+        expect.anything(),
+        true
+      )
+    );
+    expect(screen.queryByText("Load anyway")).toBeNull();
+  });
+
+  test("pre-flight alert warns when the estimate exceeds free memory", async () => {
+    getDatasetInfoMock.mockResolvedValue(matInfo());
+    getMaterializeEstimateMock.mockResolvedValue({
+      estimatedBytes: 12 * GIB,
+      systemFreeMemBytes: 2 * GIB,
+      systemTotalMemBytes: 16 * GIB,
+    });
+    const block = await renderFooterBlock();
+    fireEvent.click(within(block).getByRole("checkbox"));
+
+    // cancel: nothing is loaded
+    const cancelBtn = await screen.findByText("Cancel");
+    expect(screen.getByText("12 GiB")).toBeTruthy();
+    expect(screen.getByText("2 GiB")).toBeTruthy();
+    fireEvent.click(cancelBtn);
+    await waitFor(() =>
+      expect(screen.queryByText("Load anyway")).toBeNull()
+    );
+    expect(setMaterializedMock).not.toHaveBeenCalled();
+
+    // confirm: load proceeds
+    fireEvent.click(within(block).getByRole("checkbox"));
+    fireEvent.click(await screen.findByText("Load anyway"));
+    await waitFor(() =>
+      expect(setMaterializedMock).toHaveBeenCalledWith(
+        expect.anything(),
+        true
+      )
+    );
+  });
+
+  test("warning icon appears when the in-memory copy spills to disk", async () => {
+    getDatasetInfoMock.mockResolvedValue(
+      matInfo({ materialized: true, spillBytes: 123 * 1024 * 1024 })
+    );
+    await renderFooterBlock();
+    const warn = await screen.findByTestId("footer-materialize-warning");
+    expect(warn.getAttribute("title")).toContain("spilled to disk");
+    expect(warn.getAttribute("title")).toContain("123 MiB");
+  });
+
+  test("warning icon appears when system memory is low", async () => {
+    getDatasetInfoMock.mockResolvedValue(
+      matInfo({
+        materialized: true,
+        spillBytes: 0,
+        systemFreeMemBytes: 0.5 * GIB,
+      })
+    );
+    await renderFooterBlock();
+    const warn = await screen.findByTestId("footer-materialize-warning");
+    expect(warn.getAttribute("title")).toContain("System memory is low");
+  });
+
+  test("no warning icon for a healthy in-memory copy", async () => {
+    getDatasetInfoMock.mockResolvedValue(
+      matInfo({ materialized: true, spillBytes: 0 })
+    );
+    await renderFooterBlock();
+    expect(screen.queryByTestId("footer-materialize-warning")).toBeNull();
+  });
+
+  test("failed materialization surfaces a toast", async () => {
+    getDatasetInfoMock.mockResolvedValue(matInfo());
+    getMaterializeEstimateMock.mockResolvedValue({
+      estimatedBytes: 1024,
+      systemFreeMemBytes: 8 * GIB,
+      systemTotalMemBytes: 16 * GIB,
+    });
+    setMaterializedMock.mockRejectedValueOnce(
+      new Error("Out of Memory Error: boom")
+    );
+    const block = await renderFooterBlock();
+    fireEvent.click(within(block).getByRole("checkbox"));
+    await screen.findByText(
+      /Failed to load the dataset into memory: Out of Memory Error: boom/
+    );
   });
 });
 
