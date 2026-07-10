@@ -319,3 +319,55 @@ test("errors surface near the input and in the results log", async () => {
   ).toBe("sum bogus");
   expect(await page.locator('[data-testid="result-entry"]').count()).toBe(3);
 }, 60000);
+
+test("in-memory toggle materializes the parquet dataset and back", async () => {
+  const block = page.locator('[data-testid="footer-materialize"]');
+  await block.waitFor({ timeout: 30000 });
+  const checkbox = block.locator('input[type="checkbox"]');
+  expect(await checkbox.isChecked()).toBe(false);
+
+  // materialize: swap the parquet_scan view for an in-memory table
+  await block.locator("label").click();
+  await page.waitForFunction(
+    () => {
+      const input = document.querySelector(
+        '[data-testid="footer-materialize"] input[type="checkbox"]'
+      ) as HTMLInputElement | null;
+      return input != null && input.checked && !input.disabled;
+    },
+    undefined,
+    { timeout: 30000 }
+  );
+
+  // commands keep working against the materialized table
+  await runCommand("count");
+  const entries = page.locator('[data-testid="result-entry"]');
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="result-entry"]').length === 4,
+    undefined,
+    { timeout: 30000 }
+  );
+  expect(await entries.last().textContent()).toContain("6");
+
+  // release: restore the file-backed view
+  await block.locator("label").click();
+  await page.waitForFunction(
+    () => {
+      const input = document.querySelector(
+        '[data-testid="footer-materialize"] input[type="checkbox"]'
+      ) as HTMLInputElement | null;
+      return input != null && !input.checked && !input.disabled;
+    },
+    undefined,
+    { timeout: 30000 }
+  );
+  await runCommand("count");
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="result-entry"]').length === 5,
+    undefined,
+    { timeout: 30000 }
+  );
+  expect(await entries.last().textContent()).toContain("6");
+}, 120000);

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Switch } from "@blueprintjs/core";
 import * as reltab from "reltab";
 import * as actions from "../actions";
 import { FilterEditor } from "./FilterEditor";
@@ -40,6 +41,7 @@ export const Footer: React.FunctionComponent<FooterProps> = (
   const [prevFilter, setPrevFilter] = useState<reltab.FilterExp | null>(null);
   const [datasetInfo, setDatasetInfo] =
     useState<reltab.DatasetInfo | null>(null);
+  const [materializing, setMaterializing] = useState(false);
 
   // console.log("Footer: ", appState.toJS());
 
@@ -73,6 +75,25 @@ export const Footer: React.FunctionComponent<FooterProps> = (
       clearInterval(intervalId);
     };
   }, [viewState.dbc, dsPath]);
+
+  const handleMaterializeToggle = async () => {
+    if (dsPath == null || datasetInfo == null || materializing) {
+      return;
+    }
+    const target = !datasetInfo.materialized;
+    setMaterializing(true);
+    try {
+      await viewState.dbc.setMaterialized(dsPath, target);
+    } catch (err) {
+      console.error("setMaterialized failed: ", err);
+    }
+    try {
+      setDatasetInfo(await viewState.dbc.getDatasetInfo(dsPath));
+    } catch {
+      // keep the previous info; the poll will refresh it
+    }
+    setMaterializing(false);
+  };
 
   const setExpandedState = (nextState: boolean) => {
     if (nextState && !dirty) {
@@ -163,6 +184,28 @@ export const Footer: React.FunctionComponent<FooterProps> = (
   if (datasetInfo?.memorySizeBytes != null) {
     sizeParts.push(`Memory ${formatByteSize(datasetInfo.memorySizeBytes)}`);
   }
+  const materializeBlock =
+    datasetInfo?.canMaterialize !== true ? null : (
+      <div
+        className="footer-block footer-materialize"
+        data-testid="footer-materialize"
+        title="Load the dataset into memory for faster commands and statistics; uses RAM proportional to the data size. Toggle off to release the memory and read from the file again."
+      >
+        <Switch
+          checked={datasetInfo?.materialized === true}
+          disabled={materializing}
+          inline={true}
+          label={
+            materializing
+              ? datasetInfo?.materialized === true
+                ? "Releasing…"
+                : "Loading…"
+              : "In memory"
+          }
+          onChange={handleMaterializeToggle}
+        />
+      </div>
+    );
   const datasetSizeBlock =
     sizeParts.length === 0 ? null : (
       <div
@@ -183,6 +226,7 @@ export const Footer: React.FunctionComponent<FooterProps> = (
           <span className="filter-summary"> {filterStr}</span>
         </div>
         <div className="footer-right-block">
+          {materializeBlock}
           {datasetSizeBlock}
           {rowCountBlock}
           {rightFooterSlot}

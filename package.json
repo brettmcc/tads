@@ -28,7 +28,7 @@
   "scripts": {
     "build": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-fs && npm run build-prod -w tadviewer && npm run build-prod -w packages/tad-app",
     "build-dev": "npm run build -w reltab -w aggtree -w reltab-duckdb -w reltab-fs && npm run build-dev -w tadviewer && npm run build-dev -w packages/tad-app",
-    "test": "npm run test --if-present -w reltab -w reltab-duckdb -w tadviewer",
+    "test": "npm run test --if-present -w reltab -w reltab-duckdb -w reltab-fs -w tadviewer",
     "start": "npm run start -w packages/tad-app",
     "dist": "npm run dist -w packages/tad-app",
     "dist:win": "npm run dist:win -w packages/tad-app",
