@@ -38,7 +38,10 @@
     "sql",
     "database"
   ],
-  "author": "Antony Courtney <antony@antonycourtney.com>",
+  "author": "Brett McCully <brett.mccully@gmail.com>",
+  "contributors": [
+    "Antony Courtney <antony@antonycourtney.com> (author of Tad, on which Tads is based)"
+  ],
   "license": "MIT",
   "dependencies": {
     "aggtree": "^0.14.0",
@@ -93,6 +96,7 @@
   },
   "build": {
     "appId": "com.tadstata.tads",
+    "copyright": "Copyright © 2017 Antony Courtney, © 2026 Brett McCully",
     "asarUnpack": [
       "**/*.node",
       "**/*.dll",
