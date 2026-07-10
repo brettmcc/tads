@@ -144,6 +144,16 @@ drop temporary_*
 histogram price if price > 0, bin(30)
 ```
 
+## Performance
+
+Parquet files open instantly as a zero-copy view: every command re-reads the
+file, which DuckDB parallelizes across row groups. For repeated statistics on
+the same dataset, the **In memory** toggle in the footer loads the data into
+an in-memory DuckDB table (using RAM roughly proportional to the uncompressed
+data size); toggle it off to release the memory. DuckDB is configured with one
+less thread than the machine's core count so the grid stays responsive while a
+heavy statistic runs.
+
 ## Safety and limits
 
 Tads compiles commands to SQL using the active dialect's identifier and literal
