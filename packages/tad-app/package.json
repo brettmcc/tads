@@ -176,7 +176,8 @@
     },
     "nodeGypRebuild": false,
     "nsis": {
-      "oneClick": false
+      "oneClick": false,
+      "include": "res/installer.nsh"
     },
     "productName": "Tads"
   }
