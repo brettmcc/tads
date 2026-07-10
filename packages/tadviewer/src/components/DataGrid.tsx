@@ -485,10 +485,17 @@ const createGrid = (
 
   grid.registerPlugin(rangeSelector);
 
-  const updateViewportDebounced = _.debounce(() => {
-    const vp = grid.getViewport();
-    onViewportChanged?.(vp.top, vp.bottom);
-  }, 100);
+  // Short debounce so a quick burst of scroll events coalesces, with
+  // maxWait so continuous scrolling still emits viewport updates (and
+  // hence data fetches) while in motion instead of only after a pause.
+  const updateViewportDebounced = _.debounce(
+    () => {
+      const vp = grid.getViewport();
+      onViewportChanged?.(vp.top, vp.bottom);
+    },
+    33,
+    { maxWait: 100 }
+  );
 
   grid.onViewportChanged.subscribe((e: any, args: any) => {
     updateViewportDebounced();

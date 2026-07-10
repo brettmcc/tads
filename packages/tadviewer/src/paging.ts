@@ -31,12 +31,17 @@ export const clampViewport = (
 };
 /*
  * calculate and return row offset and limit to obtain a viewport including
- * the specified top and bottom rows, aligned to page boundaries
+ * the specified top and bottom rows, aligned to page boundaries.
+ *
+ * Includes one extra page of margin above and below the viewport so that
+ * scrolling into an adjacent page finds its rows already loaded, and the
+ * next fetch (triggered on entering the margin) completes before the
+ * viewport reaches unloaded rows.
  */
 
 export const fetchParams = (top: number, bottom: number): [number, number] => {
-  const startPage = pageNum(top);
-  const endPage = pageNum(bottom);
+  const startPage = Math.max(0, pageNum(top) - 1);
+  const endPage = pageNum(bottom) + 1;
   const offset = pageStart(startPage);
   const limit = (endPage - startPage + 1) * PAGESIZE;
   return [offset, limit];

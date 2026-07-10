@@ -315,6 +315,10 @@ export class PivotRequester {
 
   pendingOffset: number;
   pendingLimit: number;
+  /** monotonically increasing id of the most recent data request; responses
+   * from older requests are dropped so a slow stale fetch can't clobber
+   * newer data during fast scrolling */
+  private dataRequestSeq: number = 0;
   errorCallback?: (e: Error) => void;
   setLoadingCallback: (loading: boolean) => void;
   /** cache of unfiltered row counts, keyed by base query identity */
@@ -373,6 +377,7 @@ export class PivotRequester {
     );
     this.pendingOffset = offset;
     this.pendingLimit = limit;
+    const seq = ++this.dataRequestSeq;
     const dreq = requestDataView(
       viewState.dbc,
       viewParams,
@@ -383,6 +388,10 @@ export class PivotRequester {
     );
     this.pendingDataRequest = dreq;
     dreq.then((dataView) => {
+      if (seq !== this.dataRequestSeq) {
+        // a newer request superseded this one; drop the stale result
+        return dataView;
+      }
       this.pendingDataRequest = null;
       oneref.update(
         stateRef,
@@ -508,17 +517,24 @@ export class PivotRequester {
       ) as AppState;
       oneref.update(stateRef, (_) => nextAppState);
     } else {
+      // No change in view parameters; check whether the range we'd want
+      // for the current viewport (including prefetch margin) extends beyond
+      // the most recently requested range. Comparing the desired range
+      // (rather than the bare viewport) means we start fetching as soon as
+      // the viewport enters a margin page, while its rows are still loaded.
+      const [desiredOffset, desiredLimit] = paging.fetchParams(
+        viewState.viewportTop,
+        viewState.viewportBottom
+      );
       if (
         this.currentQueryView !== null &&
         !paging.contains(
           this.pendingOffset,
           this.pendingLimit,
-          viewState.viewportTop,
-          viewState.viewportBottom
+          desiredOffset,
+          desiredOffset + desiredLimit - 1
         )
       ) {
-        // No change in view parameters, but check for viewport out of range of
-        // pendingOffset, pendingLimit:
         const qv: QueryView = this.currentQueryView as any; // Flow misses null check above!
         /*
         log.debug(
