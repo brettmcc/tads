@@ -12,6 +12,9 @@
       .code {
         font-family: Menlo,Monaco,Consolas,"Courier New",monospace;
       }
+      table.cmd-table td:first-child {
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
@@ -19,164 +22,131 @@
       <div class="container">
         <h1>Quick Start</h1>
         <p class="lead">Welcome to Tads!</p>
-        <p>If you are reading this message, you have successfully installed the Tads desktop app!<p>
-        <h3>What Tads Is</h3>
-        The Tads desktop app lets you quickly explore tabular data files in several common file formats, including:
-        <br><br>
-        <dl class="row">
-        <dt class="col-sm-2"><code>.csv</code></dt>
-        <dd class="col-sm-10">The ubiquitous <a href="https://en.wikipedia.org/wiki/Comma-separated_values" onclick='tadOpenExternal(event,"https://en.wikipedia.org/wiki/Comma-separated_values")'>Comma Separated Values</a> file format</li></dd>
-        <dt class="col-sm-2"><code>.parquet</code></dt>
-        <dd class="col-sm-10"><a href="https://parquet.apache.org/" onclick='tadOpenExternal(event,"https://parquet.apache.org/")'>Apache Parquet</a>, an efficient binary columnar storage format for tabular data, especially useful for large datasets</dd>
-        <dt class="col-sm-2"><code>.duckdb</code></dt>
-        <dd class="col-sm-10"><a href="https://duckdb.org/" onclick='tadOpenExternal(event,"https://duckdb.org/")'>DuckDb</a> database files</dd>
-        <dt class="col-sm-2"><code>.sqlite</code></dt>
-        <dd class="col-sm-10"><a href="https://www.sqlite.org/index.html" onclick='tadOpenExternal(event,"https://www.sqlite.org/index.html")''>SQLite</a> database files</dd>
-        </dl>
 
-        <P>
-          The primary feature that Tads provides for exploring and analyzing files is a <a href="https://en.wikipedia.org/wiki/Pivot_table"
-          onclick='tadOpenExternal(event,"https://en.wikipedia.org/wiki/Pivot_table")'>pivot table</a>.
-          A Tads pivot table transforms a flat table of data into a hierarchical <i>tree table</i> by
-          grouping together rows that have the same value for some selected columns (the pivot columns),
-          and calculating aggregate values (like sum, min or max) for the other columns in each group.
-          Tads also supports multi-column sorts and compound filters on column values.
-        </P>
-        <h3>Launching Tads</h3>
-        <p>There are three ways to launch Tads:
-        <ol>
-          <li>Application Icon
-          <p>You can double click on the Tads application icon to open Tads.  Use <strong>File...Open</strong> and the standard file open dialog to open a tabular data file in any
-          of the supported file formats.
-          <li>Context Menu or Drag and Drop</li>
-          <p>The installation process registers Tads as a viewer for the supported file format extensions. On any <code>.csv</code> or <code>.parquet</code>file in the Finder (macOS) or Explorer (Windows), use <strong>Open With...</strong> and select <strong>Tads</strong> to open the file in Tads.
-          <li>From the Command Line
-          <div id="cmdLineSetup">
-          </div>
-          <P>
-          Once Tads is installed and available on your PATH, simply type:
-<pre>
-$ tad somefile.csv
-</pre>
-          to launch Tads to explore the file. You can also open <code>.tad</code> files (previously saved Tads view configurations) and all the
-          other supported file types via the command line.
-        </ol>
-        <h3>Basic Usage</h3>
+        <h3>Tads in a Nutshell</h3>
         <p>
-        You can explore the basics of Tads by opening this example CSV file (from the <a href="https://www.kaggle.com/carolzhangdc/imdb-5000-movie-dataset"
-          onclick='tadOpenExternal(event,"https://www.kaggle.com/carolzhangdc/imdb-5000-movie-dataset")'>IMDB 5000 Movie Dataset</a> on Kaggle)
-        included in the Tads distribution:
+        Tads is a fast desktop viewer for tabular data files: <code>.parquet</code>, <code>.csv</code>,
+        <code>.tsv</code>, <code>.duckdb</code>, and <code>.sqlite</code>. It is a fork of
+        <a href="https://www.tadviewer.com" onclick='tadOpenExternal(event,"https://www.tadviewer.com")'>Tad</a>
+        that adds a Stata-style command bar for filtering, sorting, and summarizing data
+        (see <a href="#statabar">The Stata Bar</a> below). Files are imported into an embedded DuckDb
+        database, so even very large Parquet files open quickly and scroll smoothly.
+        </p>
+        <p>
+        To open a file: double-click it in Explorer or Finder (the installer registers Tads for the
+        supported file types &mdash; on Windows, right-click a file and choose
+        <strong>Open with&hellip; &gt; Tads</strong> to make it the default), drag it onto the Tads window,
+        use <strong>File&hellip;Open</strong>, or launch from the command line
+        (<span class="code">tad somefile.parquet</span>) after the one-time setup below.
+        </p>
+        <div id="cmdLineSetup">
+        </div>
+        <p>
+        Everything from the original Tad is still here: pivot tables (click the pivot icon on the left
+        to open the column selector and choose pivot, show, and sort columns), compound filters (the
+        <strong>Filter</strong> link at the bottom of the window), and a data sources sidebar for
+        browsing folders and database files. Those features are covered in depth in the
+        <a href="https://www.tadviewer.com" onclick='tadOpenExternal(event,"https://www.tadviewer.com")'>legacy Tad documentation</a>.
+        </p>
+        <p>
+        To try Tads out right now, open this example CSV file (from the
+        <a href="https://www.kaggle.com/carolzhangdc/imdb-5000-movie-dataset"
+          onclick='tadOpenExternal(event,"https://www.kaggle.com/carolzhangdc/imdb-5000-movie-dataset")'>IMDB 5000 Movie Dataset</a>
+        on Kaggle) included in the Tads distribution:
+        </p>
         <p>
         <button class="btn btn-primary btn-lg"
           onclick='tadOpenExample()'>
         Open movie_metadata.csv
         </button>
+        </p>
+
+        <h3 id="statabar">The Stata Bar</h3>
         <p>
-        When you open a file in Tads, Tads automatically imports the data into an internal in-memory DuckDb database and
-        displays the tabular data in a grid. 
-        You can see the Tads pivot table controls by clicking the pivot icon
-        on the left of the Tads window:
-        <P>
-        <img src="images/tad-quickstart-1.png"></img>
-        <P>
-        This will open the sidebar:
-        <P>
-        <img src="images/tad-quickstart-2.png"></img>
-<!--        <P>
-        The primary feature that Tads provides for exploring and analyzing files is a <emph>pivot table</emph>.
-        Briefly, a pivot table is a transformation of a table into a hiearchical <emph>tree table</emph> by grouping all rows in the source table that have the same value for some columns (the pivot columns).
-        Multiple pivot columns result in a nested hierarchical structure, with each level of the hierarchy corresponding to one pivot column. Values of cells for non-pivoted columns at higher levels of the pivot table are determined by applying an <emph>aggregate function</emph> to all leaf rows underneath that row.
--->
-        <P>
-        The name and type of each column are shown in the main <strong>Column Selector</strong> above.
-        The additional controls in the column selector enable you to quickly build a pivot table
-        to explore your data set:
-        <ul>
-          <li>Use the checkboxes under <strong>Pivot</strong> in the main column selector to choose columns for the pivot hierarchy.
-          <li>Use the checkboxes under <strong>Show</strong> in the main column selector to determine what columns are shown / hidden.
-          <li>Set the sort columns using either the checkboxes under <strong>Sort</strong> the main column selector or by clicking on column headers in the main grid.
-          </ul>
-        Additional controls for setting the order of columns, pivots and the sort key, and controlling aggregation and formatting rules are available under <strong>Additional Properties</strong> at the bottom of the side bar.
-        <h4>Filtering</h4>
-        <P>
-        Tads provides facilities for constructing a <emph>filter</emph> to select a subset of data. A filter consists of a collection of predicates that compare a value in that row (identified by column name) with a constant.
-        <P>
-        Activate the filter pane by clicking the <strong>Filter</strong> link at the bottom of the window:
-        <P>
-        <img src="images/tad-quickstart-filter-1.png"></img>
-        <P>
-        When opened, a (populated) filter dialog looks like this:
-        <P>
-        <img src="images/tad-quickstart-filter-2.png"></img>
-        <P>
-        Construct the filter by selecting the logical operator (AND or OR) <strong>(1)</strong> and editing individual predicate rows <strong>(2)</strong>.
-        Add more rows by pressing the <strong>+</strong> button <strong>(3)</strong>, and delete predicates by clicking the <strong>x</strong> button <strong>(4)</strong> next to that predicate.
-        <P>
-        Discard, test or commit your changes using the three buttons in the lower right of the pane:
-        <P>
-        <img src="images/tad-quickstart-filter-3.png"></img>
-        <P>
-        <h4>Combining Operations</h4>
-        The different operations in Tads can be combined to enable you to explore the underlying data set.
-        For example, here is a breakdown of top grossing movies by country and director:
-        <P>
-        <img src="images/tad-quickstart-3.png"></img>
-        <P>
-        This view was produced with the following actions, which you can try for yourself: 
-        <ul>
-        <li><b>Pivot</b> by <code>country</code> and <code>director</code> by clicking the checkboxes under <b>Pivot</b> (in
-          that order).  ()
-        <li>On the <b>Pivot Tree Leaf Level</b> drop-down (at the bottom of the column selector), select <code>movie title</code>
-        <li><b>Sort</b> by <code>gross</code>. Under <b>Additional Properties</b> > <b>Sort</b>, select <i>desc</i> for descending order for this column.
-        <li>Using the <b>Fiter</b> link under the grid, set the filter to <code>gross</code> <i>is not null</i></li>
-        <li>Under <b>Additional Properties</b> > <b>Order</b>, drag <code>gross</code> to the top of the list so it will be the
-        first column displayed after the pivot tree.
-        </ul>
-        Other useful features:
-        <ul>
-        <li>If you want to change the order of the pivots, use <b>Additional Properties</b> > <b>Pivot</b> 
-          and drag column names in the list of pivoted columns to adjust the order.
-        </li>
-        <li>
-          <b>Additional Properties</b> > <b>Aggregations</b> can be used to set the aggregation function (<code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, etc.)
-          of each column, used to calculate values for non-leaf cells at higher levels of the pivot tree. The default aggregation is chosen based on the column type (<code>uniq</code> for string columns, <code>sum</code> for numerics).
-          You can also disable aggregations for a column by selecting <code>null</code> as the aggregation function. 
-        </li>
-        <li><b>Additional Properties</b> > <b>Format</b> can be used to set formatting properties (number of decimal places, etc) of each column.  You can set defaults for each column type, 
-          or fomatting properties of a specific column.</li>
-        </ul>
-        <h4>Data Sources</h4>
-        Clicking the "databases" icon on the left of the Tads window will open the <i>Data Sources</i> sidebar. This will show
-        a hierarchical tree browser of data sources you have open. 
-        If you open a directory or folder, you will see a tree view of the folder hierarchy and tabular data
-        files supported formats, like this:
-        <P>
-        <img src="images/tad-data-sources.png"></img>
-        <P>
-        You can quickly switch between different tables or tabular data files by clicking on the individual tables or files
-        in the data sources tree.
-        If you open a <code>.duckdb</code> or <code>.sqlite</code> file, the file will appear as a top level node
-        in the data sources tree, with children for the tables contained in the file.
-<!--
-        <h3>Data Sources</h3>
+        The command bar at the bottom of the window (just above the status footer) accepts a small,
+        deterministic Stata-style command language for exploring the currently loaded dataset. It is not
+        a general Stata interpreter: commands are schema-aware, compile to read-only SQL against the
+        embedded DuckDb database, and show their output &mdash; and the generated SQL &mdash; in an
+        append-only results pane above the grid.
+        </p>
+        <h4>Commands</h4>
+        <table class="table table-condensed cmd-table">
+          <thead>
+            <tr><th>Command</th><th>Form</th><th>Effect</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>browse</code></td><td><code>bro[wse] [varlist] [if expr]</code></td><td>Show selected columns and an optional one-off filter in the main grid.</td></tr>
+            <tr><td><code>summarize</code></td><td><code>sum[marize] [varlist] [if expr] [, detail]</code></td><td>N, mean, standard deviation, min, max; <code>detail</code> adds percentiles, extremes, variance, skewness, kurtosis, and sum.</td></tr>
+            <tr><td><code>tabulate</code></td><td><code>tab[ulate] var [if expr] [, missing]</code></td><td>One-way frequencies with percent and cumulative percent.</td></tr>
+            <tr><td><code>codebook</code></td><td><code>codebook [varlist]</code></td><td>Type, N, missing, distinct, and min/max or top values.</td></tr>
+            <tr><td><code>describe</code></td><td><code>des[cribe] [varlist]</code></td><td>Observation count plus variable names and SQL types.</td></tr>
+            <tr><td><code>ds</code></td><td><code>ds [varlist]</code></td><td>List resolved variable names.</td></tr>
+            <tr><td><code>list</code></td><td><code>list [varlist] [if expr]</code></td><td>Display the first 200 matching rows.</td></tr>
+            <tr><td><code>count</code></td><td><code>cou[nt] [if expr]</code></td><td>Count matching observations.</td></tr>
+            <tr><td><code>order</code></td><td><code>ord[er] varlist [, last]</code></td><td>Move variables to the front or end of the visible column order.</td></tr>
+            <tr><td><code>sort</code></td><td><code>so[rt] varlist</code></td><td>Sort the grid ascending by each key.</td></tr>
+            <tr><td><code>gsort</code></td><td><code>gsort [+|-]var ...</code></td><td>Sort with per-key direction; <code>-</code> is descending.</td></tr>
+            <tr><td><code>keep</code></td><td><code>keep varlist</code> or <code>keep if expr</code></td><td>Keep visible variables, or add a persistent row filter.</td></tr>
+            <tr><td><code>drop</code></td><td><code>drop varlist</code> or <code>drop if expr</code></td><td>Drop visible variables, or filter out matching rows.</td></tr>
+            <tr><td><code>histogram</code></td><td><code>hist[ogram] var [if expr] [, bin(#)]</code></td><td>Render a frequency histogram for a numeric variable.</td></tr>
+          </tbody>
+        </table>
         <p>
-        If you work in data science, chances are you have no shortage of CSV files of your own to explore.
-        In addition to the <a href='#' onclick='tadOpenExample()'>movie_metadata.csv</a> sample file included with Tads, a few of my favorite data sources on the Internet are:
+        Command names may be abbreviated as shown (<code>sum</code>, <code>tab</code>, <code>bro</code>, &hellip;),
+        and options may be abbreviated where unambiguous: <code>sum, d</code> and <code>tab x, m</code> are valid.
+        An omitted varlist means all currently visible variables.
+        </p>
+        <h4>Variables, wildcards, and <code>if</code> expressions</h4>
+        <p>
+        Variable names resolve like Stata's: an exact match wins, and an unambiguous prefix is accepted
+        (<code>tab dep</code> can resolve to <code>department</code>). In a varlist, <code>*</code> matches any
+        run of characters and <code>?</code> matches one character, so <code>sum price*</code> summarizes every
+        variable starting with <code>price</code>. Names containing spaces or other awkward characters are
+        backtick-quoted: <code>sum `gross margin`</code>.
+        </p>
+        <p>
+        <code>if</code> expressions combine comparisons with <code>&amp;</code>, <code>|</code>, and parentheses:
+        <code>==</code>/<code>=</code>, <code>!=</code>/<code>~=</code>, <code>&lt;</code>, <code>&lt;=</code>,
+        <code>&gt;</code>, <code>&gt;=</code> against numbers, quoted strings, other columns, <code>null</code>,
+        or date literals like <code>date("2024-01-31")</code>. Stata missing-value idioms are recognized:
+        <code>x == .</code> tests missingness, <code>x &lt; .</code> means non-missing, and
+        <code>x == ""</code> matches both null and the empty string.
+        </p>
+        <h4>Session behavior</h4>
+        <p>
+        The command session sees the columns currently visible in the grid, so <code>keep</code>,
+        <code>drop</code>, <code>order</code>, and the Columns sidebar all shape what later commands operate on.
+        <code>keep if</code> and <code>drop if</code> accumulate a persistent row filter that later statistics
+        combine with their own <code>if</code> clauses; the filter resets when you open a different dataset.
+        A <code>browse if</code> filter, by contrast, changes only the grid and is not added to the session filter.
+        </p>
+        <h4>Command bar controls</h4>
         <ul>
-          <li><a href="https://www.kaggle.com/datasets" onclick='tadOpenExternal(event,"https://www.kaggle.com/datasets")'>Kaggle Datasets</a>. The <code>movie_metadata.csv</code> file used for many Tads examples is from the <a href="https://www.kaggle.com/deepmatrix/imdb-5000-movie-dataset"
-            onclick='tadOpenExternal(event,"https://www.kaggle.com/deepmatrix/imdb-5000-movie-dataset")'>IMDB 5000 Movie Dataset</a> on Kaggle.
-          <li><a href="https://github.com/metmuseum/openaccess" onclick='tadOpenExternal(event,"https://github.com/metmuseum/openaccess")'>Met Museum Open Access Initiative</a>. The Metropolitan Museum of Art recently made 420,000 artworks available online for unrestricted use. The catalog file <code>MetObjects.csv</code> available at the linked github repository is a good example for testing Tads' ability to handle larger CSV files. It's a 228MB CSV file with 420,000 rows of data. It takes about 13 sec to load and display this file in Tads on my late 2013 MacBook Pro.
-          <li>The <a href="https://github.com/fivethirtyeight/data" onclick='tadOpenExternal(event,"https://github.com/fivethirtyeight/data")'>FiveThirtyEight github repository</a> has many CSV files providing data behind the stories and interactives on the FiveThirtyEight web site.
+          <li>Press <strong>Enter</strong> or click <strong>Run</strong> to execute a command.</li>
+          <li>Press <strong>Up/Down</strong> to navigate command history; <strong>PageUp</strong> recalls the last submitted command.</li>
+          <li>Press <strong>Tab</strong> after a partial variable name to complete it; repeated Tab cycles through matches.</li>
+          <li>Click <strong>Results</strong> or press <strong>Ctrl+`</strong> to toggle the results pane; <strong>Clear</strong> clears command history.</li>
+          <li>Click <strong>Break</strong> to interrupt a long-running query.</li>
         </ul>
--->
-        <h3>Going Further (Developers and Data Hackers)</h3>
-        <P>
-        If for some reason you want to see the gnarly details of the SQL queries that Tads is constructing and executing, you can use the <code>-f</code> option on the command line to keep Tads in the foreground and <code>--show-queries</code> to get Tads to print the generated SQL queries like so:
+        <h4>Examples</h4>
 <pre>
-$ tad -f --show-queries somefile.csv
+bro make price mpg if mpg > 20
+sum price weight if foreign == 1
+sum price*, detail
+tab rep78, missing
+count if price != .
+keep if year >= 2020
+drop temporary_*
+gsort -price make
+histogram price if price > 0, bin(30)
 </pre>
-        Not for the faint-hearted.
-        <P>
+        <p>
+        The full reference &mdash; including the expression grammar, quoting rules, output details, and
+        safety guarantees &mdash; is in
+        <a href="https://github.com/brettmcc/tads/blob/master/doc/stata-commands.md"
+          onclick='tadOpenExternal(event,"https://github.com/brettmcc/tads/blob/master/doc/stata-commands.md")'>doc/stata-commands.md</a>.
+        </p>
+
         <h3>And Finally...</h3>
         <P>
         Have fun! I hope you find Tads a useful utility for viewing and analyzing data. <a href="mailto:tad-feedback@tadviewer.com" onclick='tadOpenExternal(event,"mailto:tad-feedback@tadviewer.com")'>  Feedback welcome</a>.
@@ -197,9 +167,9 @@ $ tad -f --show-queries somefile.csv
 </div>`
   }
   function unixSetup(installCmd) {
-    const title = 'macOS'
+    const title = 'macOS: command line setup'
     const content=`
-    <P>To launch tad from the command line, you need to ensure the Tads launcher shell script is on your <code>PATH</code>. If you have administrative rights on your machine, run the following command to create a symbolic link to <code>tad.sh</code> in <code>/usr/local/bin</code>:
+    <P>To launch Tads from the command line, ensure the Tads launcher shell script is on your <code>PATH</code>. If you have administrative rights on your machine, run the following command to create a symbolic link to <code>tad.sh</code> in <code>/usr/local/bin</code>:
   <br>
   <br>
   <div class="input-group">
@@ -214,9 +184,9 @@ $ tad -f --show-queries somefile.csv
     return titledPanel(title, content)
   }
   function winSetup(appDir) {
-    const title='Windows'
+    const title='Windows: command line setup'
     const content=`
-On Windows, you should use the Control Panel to add <code>${appDir}</code> to your <code>PATH</code> environment variable.
+To launch Tads from the command line, use the Control Panel to add <code>${appDir}</code> to your <code>PATH</code> environment variable.
 `
     return titledPanel(title, content)
   }
@@ -238,7 +208,7 @@ On Windows, you should use the Control Panel to add <code>${appDir}</code> to yo
       const elem = document.getElementById('cmdLineSetup')
       elem.innerHTML = installCmdHtml
     }
-    
+
     // install this globally so we can access in generated a tag:
     window.tadOpenExternal = function (event,url) {
       event.preventDefault()
