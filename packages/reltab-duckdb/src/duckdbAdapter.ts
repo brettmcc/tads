@@ -4,6 +4,7 @@
  * instance/connection lifecycle) out of the rest of Tad.
  */
 
+import * as os from "os";
 import {
   DuckDBArrayValue,
   DuckDBBlobValue,
@@ -26,6 +27,19 @@ import { Row } from "reltab";
 export { DuckDBConnection } from "@duckdb/node-api";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * DuckDB thread count: one less than the hardware thread count, so a
+ * heavy query can't starve the Electron main/renderer processes and the
+ * grid stays scrollable while statistics are computed.
+ */
+export function duckDbThreadCount(): number {
+  const cores =
+    typeof os.availableParallelism === "function"
+      ? os.availableParallelism()
+      : os.cpus().length;
+  return Math.max(1, cores - 1);
+}
 
 /**
  * Convert a DuckDB Neo value into the plain JS values reltab expects,
@@ -123,9 +137,12 @@ export class DuckDBDatabase {
     opts?: { readOnly?: boolean }
   ): Promise<DuckDBDatabase> {
     const readOnly = opts?.readOnly ?? dbfile !== ":memory:";
-    const options: Record<string, string> = readOnly
-      ? { access_mode: "READ_ONLY" }
-      : {};
+    const options: Record<string, string> = {
+      threads: String(duckDbThreadCount()),
+    };
+    if (readOnly) {
+      options.access_mode = "READ_ONLY";
+    }
     const instance = await DuckDBInstance.create(dbfile, options);
     return new DuckDBDatabase(dbfile, instance);
   }

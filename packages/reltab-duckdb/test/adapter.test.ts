@@ -153,3 +153,19 @@ test("concurrent queries on separate connections", async () => {
   const results = await Promise.all(queries);
   expect(results).toEqual([10, 20, 30, 40]);
 });
+
+test("instances are configured with one less thread than the host", async () => {
+  const { duckDbThreadCount } = await import("../src/duckdbAdapter");
+  const expected = duckDbThreadCount();
+  expect(expected).toBeGreaterThanOrEqual(1);
+  const conn = await db.connect();
+  try {
+    const rows = await queryRows(
+      conn,
+      "SELECT current_setting('threads') AS threads"
+    );
+    expect(Number(rows[0].threads)).toBe(expected);
+  } finally {
+    closeConnection(conn);
+  }
+});
