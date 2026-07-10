@@ -6,6 +6,7 @@ import {
   DataSourceNode,
   DataSourcePath,
   EvalQueryOptions,
+  MaterializeEstimate,
 } from "../DataSource";
 import { deserializeTableRepJson, QueryExp } from "../QueryExp";
 import { ReadOnlySqlResult } from "../readOnlySql";
@@ -46,6 +47,10 @@ export interface DbConnGetDatasetInfoRequest {
 export interface DbConnSetMaterializedRequest {
   path: DataSourcePath;
   materialized: boolean;
+}
+
+export interface DbConnGetMaterializeEstimateRequest {
+  path: DataSourcePath;
 }
 
 export interface DbConnGetColumnStatsMapRequest {
@@ -185,6 +190,18 @@ class RemoteDataSourceConnection implements DataSourceConnection {
       this.tconn,
       this.sourceId,
       "setMaterialized",
+      req
+    ).then(decodeResult);
+  }
+
+  async getMaterializeEstimate(
+    path: DataSourcePath
+  ): Promise<MaterializeEstimate> {
+    const req: DbConnGetMaterializeEstimateRequest = { path };
+    return invokeDbFunction(
+      this.tconn,
+      this.sourceId,
+      "getMaterializeEstimate",
       req
     ).then(decodeResult);
   }

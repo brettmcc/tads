@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as log from "loglevel";
+import * as os from "os";
 import * as path from "path";
 import * as fsPromises from "fs/promises";
 
@@ -15,6 +16,7 @@ import {
   DbDriver,
   DuckDBDialect,
   getConnection,
+  MaterializeEstimate,
   registerProvider,
   Row,
   RunSqlQueryOpts,
@@ -125,11 +127,43 @@ export class FSDriver implements DbDriver {
       !this.isIPFS &&
       importInfo !== undefined &&
       path.extname(targetPath) === ".parquet";
+    const materialized = importInfo?.materialized === true;
     return {
       sourceSizeBytes,
       memorySizeBytes: await this.dbc.getMemoryUsageBytes(),
       canMaterialize,
-      materialized: importInfo?.materialized === true,
+      materialized,
+      // spill only matters for a materialized dataset: it means part of
+      // the "in memory" copy actually lives in DuckDB temp files on disk
+      spillBytes: materialized ? await this.dbc.getSpillBytes() : null,
+      systemFreeMemBytes: os.freemem(),
+      systemTotalMemBytes: os.totalmem(),
+    };
+  }
+
+  async getMaterializeEstimate(
+    dsPath: DataSourcePath
+  ): Promise<MaterializeEstimate> {
+    const targetPath = this.getTargetPath(dsPath);
+    let estimatedBytes: number | null = null;
+    if (!this.isIPFS && path.extname(targetPath) === ".parquet") {
+      try {
+        const rows: Row[] = await this.dbc.runSqlQuery(
+          `SELECT CAST(sum(total_uncompressed_size) AS DOUBLE) AS est
+           FROM parquet_metadata('${targetPath.replace(/'/g, "''")}')`
+        );
+        const est = rows[0]?.est;
+        if (typeof est === "number" && est > 0) {
+          estimatedBytes = est;
+        }
+      } catch (err) {
+        log.warn("getMaterializeEstimate: metadata query failed: ", err);
+      }
+    }
+    return {
+      estimatedBytes,
+      systemFreeMemBytes: os.freemem(),
+      systemTotalMemBytes: os.totalmem(),
     };
   }
 

@@ -263,6 +263,19 @@ export class DuckDBDriver implements DbDriver {
     return typeof value === "bigint" ? Number(value) : Number(value ?? 0);
   }
 
+  /**
+   * Bytes currently offloaded to DuckDB temp files: when data exceeds
+   * the memory budget the buffer manager spills blocks to disk, and
+   * queries touching them slow to disk speed.
+   */
+  async getSpillBytes(): Promise<number> {
+    const rows = await this.runSqlQuery(
+      "SELECT coalesce(sum(size), 0) AS spill_bytes FROM duckdb_temporary_files()"
+    );
+    const value = rows[0]?.spill_bytes;
+    return typeof value === "bigint" ? Number(value) : Number(value ?? 0);
+  }
+
   async getDatasetInfo(_path: DataSourcePath): Promise<DatasetInfo> {
     const sourceSizeBytes =
       this.dbfile !== ":memory:"

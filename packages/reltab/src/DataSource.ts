@@ -57,6 +57,26 @@ export interface DatasetInfo {
   canMaterialize?: boolean;
   /** current state of the in-memory copy toggle */
   materialized?: boolean;
+  /**
+   * bytes of database temp-file spill currently on disk; reported for
+   * materialized datasets whose data exceeded the memory budget
+   */
+  spillBytes?: number | null;
+  /** free physical memory on the host at poll time */
+  systemFreeMemBytes?: number | null;
+  /** total physical memory on the host */
+  systemTotalMemBytes?: number | null;
+}
+
+/**
+ * Pre-flight sizing for setMaterialized: how big the in-memory copy is
+ * expected to be, alongside the host's current memory headroom.
+ */
+export interface MaterializeEstimate {
+  /** estimated in-memory size of the dataset, null when unknown */
+  estimatedBytes: number | null;
+  systemFreeMemBytes: number;
+  systemTotalMemBytes: number;
 }
 
 export interface DataSourceNode {
@@ -124,6 +144,9 @@ export interface DbDriver {
    * reports canMaterialize.
    */
   setMaterialized?(path: DataSourcePath, materialized: boolean): Promise<void>;
+
+  /** Estimate the in-memory size of the dataset before materializing. */
+  getMaterializeEstimate?(path: DataSourcePath): Promise<MaterializeEstimate>;
 }
 
 /**
@@ -160,6 +183,13 @@ export interface DataSourceConnection {
    * reports canMaterialize; throws otherwise.
    */
   setMaterialized(path: DataSourcePath, materialized: boolean): Promise<void>;
+
+  /**
+   * Estimate the in-memory size of the dataset before materializing.
+   * Only supported when getDatasetInfo reports canMaterialize; throws
+   * otherwise.
+   */
+  getMaterializeEstimate(path: DataSourcePath): Promise<MaterializeEstimate>;
 
   getTableSchema(tableName: string): Promise<Schema>;
 
@@ -271,6 +301,17 @@ export class DbDataSource implements DataSourceConnection {
       );
     }
     await this.db.setMaterialized(path, materialized);
+  }
+
+  async getMaterializeEstimate(
+    path: DataSourcePath
+  ): Promise<MaterializeEstimate> {
+    if (!this.db.getMaterializeEstimate) {
+      throw new Error(
+        "getMaterializeEstimate: not supported by this data source"
+      );
+    }
+    return this.db.getMaterializeEstimate(path);
   }
 
   async rowCount(query: QueryExp, options?: EvalQueryOptions): Promise<number> {

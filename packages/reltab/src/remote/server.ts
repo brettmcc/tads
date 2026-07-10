@@ -16,6 +16,7 @@ import {
   DbConnRunReadOnlySqlRequest,
   DbConnGetDatasetInfoRequest,
   DbConnSetMaterializedRequest,
+  DbConnGetMaterializeEstimateRequest,
   ReltabConnection,
 } from "./Connection";
 import { ReadOnlySqlResult } from "../readOnlySql";
@@ -26,6 +27,7 @@ import {
   DataSourceNode,
   DataSourcePath,
   DataSourceProvider,
+  MaterializeEstimate,
 } from "../DataSource";
 import { deserializeQueryReq, QueryExp } from "../QueryExp";
 import {
@@ -142,6 +144,13 @@ const dbConnGetDatasetInfo = async (
   return conn.getDatasetInfo(req.path);
 };
 
+const dbConnGetMaterializeEstimate = async (
+  conn: DataSourceConnection,
+  req: DbConnGetMaterializeEstimateRequest
+): Promise<MaterializeEstimate> => {
+  return conn.getMaterializeEstimate(req.path);
+};
+
 const dbConnSetMaterialized = async (
   conn: DataSourceConnection,
   req: DbConnSetMaterializedRequest
@@ -196,6 +205,9 @@ const handleDbConnRunReadOnlySql = mkEngineReqHandler(dbConnRunReadOnlySql);
 const handleDbConnInterrupt = mkEngineReqHandler(dbConnInterrupt);
 const handleDbConnGetDatasetInfo = mkEngineReqHandler(dbConnGetDatasetInfo);
 const handleDbConnSetMaterialized = mkEngineReqHandler(dbConnSetMaterialized);
+const handleDbConnGetMaterializeEstimate = mkEngineReqHandler(
+  dbConnGetMaterializeEstimate
+);
 
 let providerRegistry: { [providerName: string]: DataSourceProvider } = {};
 
@@ -381,6 +393,10 @@ export const serverInit = (ts: TransportServer) => {
   ts.registerInvokeHandler(
     "DataSourceConnection.setMaterialized",
     exceptionHandler(handleDbConnSetMaterialized)
+  );
+  ts.registerInvokeHandler(
+    "DataSourceConnection.getMaterializeEstimate",
+    exceptionHandler(handleDbConnGetMaterializeEstimate)
   );
 };
 

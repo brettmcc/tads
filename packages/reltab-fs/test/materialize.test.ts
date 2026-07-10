@@ -89,12 +89,17 @@ test("parquet file materializes to a table and back to a view", async () => {
   let info = await dsConn.getDatasetInfo(dsPath);
   expect(info.canMaterialize).toBe(true);
   expect(info.materialized).toBe(false);
+  expect(info.spillBytes).toBeNull();
+  expect(info.systemFreeMemBytes).toBeGreaterThan(0);
+  expect(info.systemTotalMemBytes).toBeGreaterThan(0);
   expect(await catalogType(dsConn, tableName)).toBe("VIEW");
   const viewRows = await tableData(dsConn, tableName);
 
   await dsConn.setMaterialized(dsPath, true);
   info = await dsConn.getDatasetInfo(dsPath);
   expect(info.materialized).toBe(true);
+  // fixture is tiny: fully in memory, nothing spilled to temp files
+  expect(info.spillBytes).toBe(0);
   expect(await catalogType(dsConn, tableName)).toBe("BASE TABLE");
   expect(await tableData(dsConn, tableName)).toEqual(viewRows);
 
@@ -107,6 +112,18 @@ test("parquet file materializes to a table and back to a view", async () => {
   expect(info.materialized).toBe(false);
   expect(await catalogType(dsConn, tableName)).toBe("VIEW");
   expect(await tableData(dsConn, tableName)).toEqual(viewRows);
+});
+
+test("materialize estimate reports parquet uncompressed size and headroom", async () => {
+  const { dsConn, dsPath } = await openFile(parquetPath);
+  const est = await dsConn.getMaterializeEstimate(dsPath);
+  // 100 rows x 2 BIGINT columns = 1600 bytes of raw data
+  expect(est.estimatedBytes).not.toBeNull();
+  expect(est.estimatedBytes!).toBeGreaterThanOrEqual(1600);
+  expect(est.systemFreeMemBytes).toBeGreaterThan(0);
+  expect(est.systemTotalMemBytes).toBeGreaterThanOrEqual(
+    est.systemFreeMemBytes
+  );
 });
 
 test("csv files report canMaterialize false and reject the toggle", async () => {
