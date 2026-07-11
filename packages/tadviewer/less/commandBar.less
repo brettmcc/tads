@@ -1,40 +1,49 @@
-/* Stata-style command bar and results pane */
+/* Stata-style command bar and results pane (Graphite theme) */
 
 .command-bar-container {
   flex: 0 0 auto;
-  border-top: 1px solid #d0d0d0;
-  background: #f7f7f7;
+  border-top: 1px solid var(--tad-border);
+  background: var(--tad-chrome);
 }
 
 .command-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 8px;
+  padding: 6px 10px;
 }
 
 .command-prompt {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--tad-mono-font);
   font-weight: 700;
-  color: #555;
+  color: var(--tad-accent);
 }
 
 .command-input {
   flex: 1 1 auto;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 9pt;
-  padding: 3px 6px;
-  border: 1px solid #c0c0c0;
-  border-radius: 2px;
+  font-family: var(--tad-mono-font);
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 1px solid var(--tad-field-border);
+  border-radius: 5px;
   outline: none;
+  background: var(--tad-field-bg);
+  color: var(--tad-fg);
+  caret-color: var(--tad-accent);
+}
+
+.command-input::placeholder {
+  color: var(--tad-subtle);
 }
 
 .command-input:focus {
-  border-color: #137cbd;
+  border-color: var(--tad-accent);
+  box-shadow: 0 0 0 2px var(--tad-focus-ring);
 }
 
 .command-input:disabled {
-  background: #eee;
+  background: var(--tad-chip-bg);
+  color: var(--tad-subtle);
 }
 
 /* variable-completion dropdown; the command bar sits at the bottom of
@@ -47,45 +56,46 @@
   position: absolute;
   bottom: 100%;
   left: 18px;
-  margin: 0 0 2px 0;
-  padding: 2px 0;
+  margin: 0 0 4px 0;
+  padding: 3px 0;
   list-style: none;
   min-width: 180px;
   max-width: 400px;
   max-height: 240px;
   overflow-y: auto;
-  background: #ffffff;
-  border: 1px solid #c0c0c0;
-  border-radius: 2px;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
-  font-family: Consolas, Menlo, monospace;
-  font-size: 9pt;
+  background: var(--tad-chrome);
+  border: 1px solid var(--tad-border-strong);
+  border-radius: 6px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.45);
+  font-family: var(--tad-mono-font);
+  font-size: 12px;
   z-index: 20;
 }
 
 .command-completion-item {
-  padding: 2px 10px;
+  padding: 3px 12px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--tad-fg);
 }
 
 .command-completion-item:hover {
-  background: #eef4fa;
+  background: var(--tad-hover);
 }
 
 .command-completion-item.selected {
-  background: #137cbd;
-  color: #ffffff;
+  background: var(--tad-sel-bg);
+  color: var(--tad-sel-fg);
 }
 
 .command-bar-error {
-  padding: 2px 8px;
-  font-size: 8.5pt;
-  color: #c23030;
-  background: #fdeaea;
-  border-bottom: 1px solid #f5c6c6;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  color: var(--tad-error-fg);
+  background: var(--tad-error-bg);
+  border-bottom: 1px solid var(--tad-border);
 }
 
 /* results pane */
@@ -97,8 +107,8 @@
   height: 35%;
   min-height: 120px;
   max-height: 50%;
-  border-top: 1px solid #d0d0d0;
-  background: #ffffff;
+  border-top: 1px solid var(--tad-border);
+  background: var(--tad-results);
 }
 
 .results-pane-header {
@@ -106,87 +116,116 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 8px;
-  border-bottom: 1px solid #e2e2e2;
-  background: #fafafa;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--tad-border);
+  background: var(--tad-chrome);
 }
 
 .results-pane-title {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--tad-subtle);
 }
 
 .results-pane-scroll {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 4px 8px;
+  padding: 7px 12px;
 }
 
 .results-pane-empty {
-  color: #777;
+  color: var(--tad-subtle);
   padding: 8px;
 }
 
 .command-result-entry {
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px dotted #e0e0e0;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--tad-grid-line);
+}
+
+.command-result-entry:last-child {
+  border-bottom: none;
 }
 
 .entry-command-line {
-  font-family: Consolas, Menlo, monospace;
-  margin-bottom: 4px;
+  font-family: var(--tad-mono-font);
+  margin-bottom: 5px;
 }
 
 .entry-prompt {
   font-weight: 700;
   margin-right: 6px;
-  color: #555;
+  color: var(--tad-accent);
 }
 
 .entry-command {
   font-weight: 600;
+  color: var(--tad-fg);
 }
 
 .entry-elapsed {
   float: right;
-  color: #999;
-  font-size: 8pt;
+  color: var(--tad-subtle);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .entry-status-error .entry-command {
-  color: #c23030;
+  color: var(--tad-error-fg);
 }
 
 .entry-error {
-  font-family: Consolas, Menlo, monospace;
-  color: #c23030;
-  background: #fdf3f3;
-  padding: 4px 8px;
+  font-family: var(--tad-mono-font);
+  color: var(--tad-error-fg);
+  background: var(--tad-error-bg);
+  border-radius: 5px;
+  padding: 5px 10px;
   margin: 2px 0;
   white-space: pre;
 }
 
 .command-result-text {
-  color: #555;
+  color: var(--tad-chip-fg);
   margin: 2px 0;
 }
 
+/* clean, set-in-type result tables: no outer frame, a strong rule
+   under the header, hairline row rules, aligned figures */
 .command-result-table {
   margin: 4px 0;
-  border: 1px solid #ddd;
+  border: none;
 }
 
 .command-result-table th,
 .command-result-table td {
-  padding: 2px 10px;
-  border-bottom: 1px solid #eee;
+  padding: 3px 14px;
+  border-bottom: 1px solid var(--tad-grid-line);
   font-variant-numeric: tabular-nums;
 }
 
 .command-result-table th {
-  background: #f4f4f4;
+  background: transparent;
   font-weight: 600;
-  border-bottom: 1px solid #ccc;
+  font-size: 11px;
+  color: var(--tad-subtle);
+  border-bottom: 1px solid var(--tad-border-strong);
+}
+
+.command-result-table th:first-child,
+.command-result-table td:first-child {
+  padding-left: 2px;
+}
+
+.command-result-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.command-result-table tbody td:first-child {
+  font-family: var(--tad-mono-font);
+  font-size: 11.5px;
 }
 
 .cell-right {
@@ -198,7 +237,7 @@
 }
 
 .codebook-var {
-  margin: 6px 0;
+  margin: 8px 0;
 }
 
 .codebook-var-header {
@@ -207,18 +246,19 @@
 
 .codebook-var-name {
   font-weight: 700;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--tad-mono-font);
+  color: var(--tad-sel-fg);
 }
 
 .codebook-var-type {
   margin-left: 8px;
-  color: #777;
-  font-family: Consolas, Menlo, monospace;
+  color: var(--tad-subtle);
+  font-family: var(--tad-mono-font);
 }
 
 .sum-detail-grid {
   display: flex;
-  gap: 16px;
+  gap: 24px;
   align-items: flex-start;
 }
 
@@ -232,16 +272,18 @@
 
 .entry-sql summary {
   cursor: pointer;
-  color: #137cbd;
-  font-size: 8pt;
+  color: var(--tad-accent);
+  font-size: 10.5px;
   user-select: none;
 }
 
 .entry-sql pre {
-  background: #f6f8fa;
-  border: 1px solid #e2e2e2;
-  padding: 6px 8px;
+  background: var(--tad-field-bg);
+  border: 1px solid var(--tad-border);
+  border-radius: 5px;
+  padding: 6px 10px;
   margin: 4px 0 0 0;
-  font-size: 8.5pt;
+  font-size: 11px;
+  color: var(--tad-chip-fg);
   overflow-x: auto;
 }

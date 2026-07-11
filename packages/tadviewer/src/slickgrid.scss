@@ -1,3 +1,13 @@
 @import "~slickgrid-es6/dist/slick.grid.variables.scss";
+
+// Graphite dark theme: keep these in sync with the CSS custom
+// properties in less/tadviewer.less (--tad-*). The scss theme bakes the
+// values into rules our scoped overrides don't reach (structural grid
+// chrome, selection, editors).
+$grid-border-color: #2b2e36;
+$grid-header-background: #1d1f24;
+$grid-cell-color: #17181c;
+$grid-cell-selected-color: #2b3245;
+
 @import "~slickgrid-es6/dist/slick.grid.scss";
 @import "~slickgrid-es6/dist/slick-default-theme.scss";

@@ -1,8 +1,9 @@
 .activityBar {
-  background-color: #efefef;
+  background-color: var(--tad-chrome);
+  border-right: 1px solid var(--tad-border);
   display: inherit;
-  width: 50px;
-  min-width: 50px;
+  width: 46px;
+  min-width: 46px;
   flex: 0 0 auto;
   flex-direction: column;
   align-items: center;
@@ -11,8 +12,14 @@
 }
 
 .activityBar > button {
-  margin-left: 5px;
-  margin-right: 5px;
-  margin-top: 15px;
-  margin-bottom: 10px;
+  margin: 10px 5px 0 5px;
+  border-radius: 8px;
+  color: var(--tad-subtle);
+}
+
+/* accent tab-indicator on the active activity */
+.activityBar > button.bp4-active {
+  background: var(--tad-sel-bg) !important;
+  color: var(--tad-accent);
+  box-shadow: inset 2.5px 0 0 var(--tad-accent);
 }

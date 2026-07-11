@@ -1,10 +1,10 @@
 .column-selector {
-  border: 1px solid #c0c0c0;
-  font-size: 8pt;
+  border: 1px solid var(--tad-border);
+  font-size: 11.5px;
 }
 
 .column-selector-table {
-  background-color: #ffffff;
+  background-color: var(--tad-canvas);
   /* column widths come from the <colgroup>; table width is set inline
      (it grows when the name column is drag-resized) */
   table-layout: fixed;
@@ -13,16 +13,24 @@
 
 .column-selector-search {
   padding: 6px;
-  background: #f7f7f7;
-  border-bottom: 1px solid #c0c0c0;
+  background: var(--tad-chrome);
+  border-bottom: 1px solid var(--tad-border);
 }
 
 .column-selector-search input {
   width: 100%;
-  padding: 3px 6px;
-  border: 1px solid #b8b8b8;
-  border-radius: 2px;
-  font-size: 8.5pt;
+  padding: 3px 8px;
+  border: 1px solid var(--tad-field-border);
+  border-radius: 5px;
+  font-size: 11.5px;
+  background: var(--tad-field-bg);
+  color: var(--tad-fg);
+}
+
+.column-selector-search input:focus {
+  outline: none;
+  border-color: var(--tad-accent);
+  box-shadow: 0 0 0 2px var(--tad-focus-ring);
 }
 
 /* horizontal scroll container shared by header and body tables so they
@@ -32,7 +40,7 @@
 }
 
 .column-selector-header {
-  border-bottom: 1px solid #c0c0c0;
+  border-bottom: 1px solid var(--tad-border-strong);
 }
 
 .column-selector-body {
@@ -74,20 +82,20 @@ table.column-selector-table td {
   height: 100%;
   cursor: col-resize;
   /* always-visible vertical line cueing where to grab */
-  border-right: 2px solid #c8c8c8;
+  border-right: 2px solid var(--tad-border-strong);
 }
 
 .col-resize-handle:hover {
-  border-right-color: #888888;
-  background-color: #e4e4e4;
+  border-right-color: var(--tad-subtle);
+  background-color: var(--tad-hover);
 }
 
 .column-selector thead {
-  border-bottom: 1px solid #c0c0c0;
+  border-bottom: 1px solid var(--tad-border-strong);
 }
 
 .column-selector .all-row {
-  background-color: #f0f0f0;
+  background-color: var(--tad-chrome);
 }
 
 .column-selector .col-check:last-child {

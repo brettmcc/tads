@@ -1,5 +1,6 @@
 .sidebar {
-  background-color: #efefef;
+  background-color: var(--tad-chrome);
+  border-right: 1px solid var(--tad-border);
   display: inherit;
   flex: 0 0 auto;
   height: 100%;
@@ -10,6 +11,7 @@
 .sidebar-collapsed {
   width: 0px;
   min-width: 0px;
+  border-right: none;
 }
 
 .sidebar-expanded {
@@ -34,11 +36,6 @@
 }
 
 .sidebar-placeholder {
-  /*  
-  position: absolute;
-  left: 0;
-  top: 0;
-*/
   margin-left: 8px;
   margin-top: 8px;
 }

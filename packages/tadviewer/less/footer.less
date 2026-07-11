@@ -1,12 +1,14 @@
-@footer-collapsed-height: 30px;
+@footer-collapsed-height: 28px;
 @footer-expanded-height: 320px;
 
+/* slim status bar; expands in place to host the filter editor */
 .footer {
-  background-color: #efefef;
-  border: 1px solid #bababa;
-  padding-top: 4px;
-  padding-bottom: 4px;
-  font-size: var(--tad-footer-font-size, 14px);
+  background-color: var(--tad-chrome);
+  border-top: 1px solid var(--tad-border);
+  color: var(--tad-subtle);
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: var(--tad-footer-font-size, 11.5px);
   flex: 0 0 auto;
   display: flex;
   justify-content: flex-start;
@@ -28,14 +30,26 @@
   height: @footer-collapsed-height;
   display: flex;
   flex-direction: row;
-  padding-left: 16px;
-  padding-right: 16px;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 12px;
   justify-content: space-between;
+}
+
+.footer a {
+  color: var(--tad-accent);
+}
+
+.footer-value {
+  color: var(--tad-chip-fg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .footer-filter-block {
   display: flex;
   flex-direction: row;
+  align-items: center;
   justify-content: flex-start;
   max-width: 600px;
 }
@@ -43,7 +57,8 @@
 .footer-right-block {
   display: flex;
   flex-direction: row;
-  gap: 8px;
+  align-items: center;
+  gap: 14px;
   justify-content: flex-start;
   max-width: 600px;
 }
@@ -72,4 +87,5 @@
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
+  color: var(--tad-subtle);
 }

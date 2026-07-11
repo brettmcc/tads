@@ -4,15 +4,68 @@
 @import "~@blueprintjs/icons/lib/css/blueprint-icons.css";
 @import "~@blueprintjs/popover2/lib/css/blueprint-popover2.css";
 
+/* ----------------------------------------------------------------
+   "Graphite" dark theme tokens. Every region of the app chrome and
+   the grid derives from these; change the palette here, not in the
+   individual component styles.
+   ---------------------------------------------------------------- */
+:root {
+  --tad-canvas: #17181c; /* grid / main data canvas */
+  --tad-fg: #d5d9e0;
+  --tad-chrome: #1d1f24; /* sidebars, bars, headers */
+  --tad-results: #15161a;
+  --tad-border: #2b2e36;
+  --tad-border-strong: #343842;
+  --tad-accent: #6ca4f8;
+  --tad-subtle: #7d8494;
+  --tad-field-bg: #101114;
+  --tad-field-border: #343842;
+  --tad-focus-ring: rgba(108, 164, 248, 0.2);
+  --tad-chip-bg: #282b33;
+  --tad-chip-fg: #aeb5c2;
+  --tad-sel-bg: #2b3245;
+  --tad-sel-fg: #a8c7fa;
+  --tad-grid-line: #24262d;
+  --tad-header-bg: #1d1f24;
+  --tad-header-fg: #aeb5c2;
+  --tad-zebra: #1a1c21;
+  --tad-hover: #21242c;
+  --tad-stub-bg: #1b1d22;
+  --tad-stub-fg: #666d7c;
+  --tad-stub-line: #2b2e36;
+  --tad-active-cell: #223050;
+  --tad-active-stub: #2b3a5c;
+  --tad-active-stub-fg: #a8c7fa;
+  --tad-active-header: #262d3f;
+  --tad-active-header-fg: #a8c7fa;
+  --tad-error-fg: #f28b82;
+  --tad-error-bg: #2a1d1f;
+  --tad-mono-font: Consolas, "Cascadia Code", Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--tad-canvas);
+  color: var(--tad-fg);
+}
+
 .tad-app-pane {
-  font-family: var(--tad-font-family, "Helvetica Neue", Helvetica, Arial, sans-serif);
-  font-size: var(--tad-font-size, 8pt);
+  font-family: var(
+    --tad-font-family,
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    "Helvetica Neue",
+    sans-serif
+  );
+  font-size: var(--tad-font-size, 12px);
   margin: 0;
   font-weight: 400;
   height: 100%;
   overflow: hidden;
+  background: var(--tad-canvas);
+  color: var(--tad-fg);
 }
-
 
 .cell-story {
   white-space: normal !important;
@@ -27,19 +80,13 @@
 .loading-indicator {
   display: inline-block;
   padding: 12px;
-  background: white;
-  -opacity: 0.5;
-  color: black;
-  font-weight: bold;
+  background: var(--tad-chrome);
+  color: var(--tad-fg);
+  font-weight: 600;
   z-index: 9999;
-  border: 1px solid red;
-  border-radius: 10px;
-  -moz-border-radius: 10px;
-  -webkit-border-radius: 10px;
-  box-shadow: 0 0 5px red;
-  -moz-box-shadow: 0 0 5px red;
-  -webkit-box-shadow: 0px 0px 5px red;
-  -text-shadow: 1px 1px 1px white;
+  border: 1px solid var(--tad-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
 .loading-indicator label {
@@ -49,17 +96,16 @@
 }
 
 .pivot-column {
-  /*  background: white; */
   border: none;
-  border-right: 1px dotted silver;
+  border-right: 1px dotted var(--tad-border-strong);
 }
 
 .pivot-column.active {
   border-color: none;
   border-style: none;
-  border-right: 1px dotted silver;
-  border-top: 1px dotted silver;
-  border-bottom: 1px dotted silver;
+  border-right: 1px dotted var(--tad-border-strong);
+  border-top: 1px dotted var(--tad-border-strong);
+  border-bottom: 1px dotted var(--tad-border-strong);
 }
 
 .data-cell-numeric {
@@ -67,35 +113,100 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Stata Browse-style row-number column; click a number to select the row.
-   Selectors are scoped under .slickgrid-container so they outrank the
-   theme's zebra-striping rule (.slickgrid-container .slick-row.odd
-   .slick-cell), which otherwise wins on gray rows. */
-.slickgrid-container .slick-row .slick-cell.row-number-cell {
-  background: #f0f0f0;
-  color: #666666;
+/* ----------------------------------------------------------------
+   Dark grid. All selectors scoped under .slickgrid-container so they
+   outrank the slickgrid theme rules (e.g. the zebra rule
+   .slickgrid-container .slick-row.odd .slick-cell), which otherwise
+   win. FrozenGrid renders a visual row as TWO .slick-row elements
+   (left/right panes); these rules hit both.
+   ---------------------------------------------------------------- */
+.slickgrid-container {
+  border-color: var(--tad-border) !important;
+  color: var(--tad-fg);
+}
+
+.slickgrid-container .grid-canvas {
+  background: var(--tad-canvas);
+}
+
+.slickgrid-container .slick-row,
+.slickgrid-container .slick-row .slick-cell {
+  background: var(--tad-canvas);
+  border-color: var(--tad-grid-line);
+}
+
+.slickgrid-container .slick-row.odd .slick-cell {
+  background: var(--tad-zebra);
+}
+
+.slickgrid-container .slick-row .slick-cell.selected,
+.slickgrid-container .slick-row.odd .slick-cell.selected {
+  background-color: var(--tad-sel-bg);
+}
+
+.slickgrid-container .slick-row .slick-cell.active {
+  border-color: var(--tad-accent);
+  background: var(--tad-active-cell);
+}
+
+/* slickgrid's default theme paints .active-row cells a hardcoded pale
+   cyan; neutralize it for the dark canvas */
+.slickgrid-container .slick-row.active-row .slick-cell,
+.slickgrid-container .slick-row.active-row.odd .slick-cell {
+  background-color: var(--tad-active-cell);
+}
+
+.slickgrid-container .slick-header-columns,
+.slickgrid-container .slick-header-column {
+  background: var(--tad-header-bg);
+  color: var(--tad-header-fg);
+  border-color: var(--tad-border-strong);
+  font-weight: 600;
+}
+
+.slickgrid-container .slick-header-column:hover {
+  background: var(--tad-hover);
+}
+
+.slickgrid-container .slick-header-column-active {
+  background: var(--tad-active-header) !important;
+}
+
+.slickgrid-container .slick-viewport {
+  background: var(--tad-canvas);
+}
+
+/* Stata Browse-style row-number column; click a number to select the row. */
+.slickgrid-container .slick-row .slick-cell.row-number-cell,
+.slickgrid-container .slick-row.odd .slick-cell.row-number-cell {
+  background: var(--tad-stub-bg);
+  color: var(--tad-stub-fg);
   text-align: right;
-  border-right: 1px solid #c8c8c8;
+  border-right: 1px solid var(--tad-stub-line);
   cursor: pointer;
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
 
-/* mild highlight of the row stub and column header of the active cell */
-.slickgrid-container .slick-row .slick-cell.row-number-cell.row-stub-active {
-  background: #cfe3f7;
-  color: #17416b;
+/* highlight of the row stub and column header of the active cell */
+.slickgrid-container .slick-row .slick-cell.row-number-cell.row-stub-active,
+.slickgrid-container
+  .slick-row.odd
+  .slick-cell.row-number-cell.row-stub-active {
+  background: var(--tad-active-stub);
+  color: var(--tad-active-stub-fg);
   font-weight: 600;
 }
 
 .slickgrid-container .slick-header-column.col-header-active {
-  background: #cfe3f7;
+  background: var(--tad-active-header);
+  color: var(--tad-active-header-fg);
+  box-shadow: inset 0 -2px 0 var(--tad-accent);
 }
-
 
 .bp4-label,
 .bp4-control {
-  font-size: 10pt;
+  font-size: 12px;
 }
 
 .full-height {
@@ -120,6 +231,7 @@
   flex: 1 1 auto;
   height: 100%;
   overflow: hidden;
+  background: var(--tad-canvas);
 }
 .gridPaneInner {
   width: 100%;
@@ -132,19 +244,20 @@
 }
 
 .columnHeaderCell rect {
-  fill: steelblue;
+  fill: var(--tad-accent);
   shape-rendering: crispEdges;
 }
 
 #epGrid {
-  border-left: 1px solid #c0c0c0;
+  border-left: 1px solid var(--tad-border);
   width: 100%;
   height: 100%;
 }
 
 .ui-subtext {
   font-weight: normal;
-  font-size: 8pt;
+  font-size: 11px;
+  color: var(--tad-subtle);
 }
 
 .ui-block {
@@ -157,7 +270,7 @@ table {
   border-collapse: collapse;
 }
 .table-hover > tbody > tr:hover {
-  background-color: #f5f5f5;
+  background-color: var(--tad-hover);
 }
 .table > thead > tr > th,
 .table > thead > tr > td,
@@ -166,7 +279,7 @@ table {
   padding-bottom: 6px;
   padding-left: 8px;
   padding-right: 8px;
-  border-top: 1px solid #ddd;
+  border-top: 1px solid var(--tad-border);
 }
 
 .center-app-pane {
@@ -176,4 +289,5 @@ table {
   flex-direction: column;
   flex-wrap: nowrap;
   overflow: none;
+  background: var(--tad-canvas);
 }
