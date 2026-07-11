@@ -74,7 +74,8 @@ const dsNodeFullPath = (dsPath: DataSourcePath): string => {
 const dsNodeTreeNode = (
   dsc: DataSourceConnection,
   dsPath: DataSourcePath,
-  dsNode: DataSourceNode
+  dsNode: DataSourceNode,
+  onClose?: (e: React.MouseEvent<HTMLElement>) => void
 ): DSTreeNodeInfo => {
   const ret: DSTreeNodeInfo = {
     icon: dataKindIcon(dsNode.kind),
@@ -88,12 +89,31 @@ const dsNodeTreeNode = (
     nodeData: { dsc, dsPath, dsNode },
     hasCaret: dsNode.isContainer,
   };
+  const closeButton = onClose ? (
+    <span
+      className="ds-node-close"
+      data-testid="ds-close-button"
+      title="Close connection"
+      onClick={onClose}
+    >
+      <Icon icon="small-cross" />
+    </span>
+  ) : null;
   if (dsNode.description) {
     ret.secondaryLabel = (
-      <Tooltip usePortal={true} boundary="window" content={dsNode.description}>
-        <Icon icon="eye-open" />
-      </Tooltip>
+      <>
+        <Tooltip
+          usePortal={true}
+          boundary="window"
+          content={dsNode.description}
+        >
+          <Icon icon="eye-open" />
+        </Tooltip>
+        {closeButton}
+      </>
     );
+  } else if (closeButton) {
+    ret.secondaryLabel = closeButton;
   }
   return ret;
 };
@@ -142,7 +162,9 @@ export const DataSourceSidebar: React.FC<DataSourceSidebarProps> = ({
                 rootNode
               );
               */
-              rootTreeNode = dsNodeTreeNode(dsc, rootPath, rootNode);
+              rootTreeNode = dsNodeTreeNode(dsc, rootPath, rootNode, (e) =>
+                handleCloseSource(e, sourceId)
+              );
               nextNodeMap[sourceIdStr] = rootTreeNode;
               if (rootNode.isContainer) {
                 newContainers.push(rootTreeNode);
@@ -168,6 +190,35 @@ export const DataSourceSidebar: React.FC<DataSourceSidebarProps> = ({
   useEffect(() => {
     throttledRefresh.current();
   });
+
+  const handleCloseSource = async (
+    e: React.MouseEvent<HTMLElement>,
+    sourceId: DataSourceId
+  ) => {
+    // don't let the click select or open the node being closed
+    e.stopPropagation();
+    try {
+      // deregister on the server first so a pending sidebar refresh
+      // can't re-add the node from a stale getDataSources result
+      await actions.closeDataSource(sourceId, stateRef);
+    } catch (err) {
+      console.error("error closing data source: ", err);
+      return;
+    }
+    const sourceIdStr = JSON.stringify(sourceId);
+    delete rootNodeMap[sourceIdStr];
+    setTreeState((prev) =>
+      prev.filter(
+        (node) => JSON.stringify(node.nodeData!.dsPath.sourceId) !== sourceIdStr
+      )
+    );
+    setSelectedNode((prev) =>
+      prev != null &&
+      JSON.stringify(prev.nodeData!.dsPath.sourceId) === sourceIdStr
+        ? null
+        : prev
+    );
+  };
 
   const handleNodeCollapse = (treeNode: DSTreeNodeInfo) => {
     treeNode.isExpanded = false;

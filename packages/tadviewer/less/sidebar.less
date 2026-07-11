@@ -52,6 +52,26 @@
   visibility: visible;
 }
 
+/* close-connection 'x' on data source nodes: revealed while the
+   cursor hovers the node's row */
+.ds-node-close {
+  visibility: hidden;
+  cursor: pointer;
+  line-height: 0;
+  padding: 2px;
+  border-radius: 3px;
+  color: var(--tad-subtle);
+}
+
+.bp4-tree-node-content:hover .ds-node-close {
+  visibility: visible;
+}
+
+.ds-node-close:hover {
+  color: var(--tad-error-fg);
+  background-color: var(--tad-chip-bg);
+}
+
 .show-root-label {
   margin-left: 5px;
 }

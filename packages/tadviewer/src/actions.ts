@@ -135,6 +135,31 @@ export const replaceCurrentView = async (
   );
 };
 
+/**
+ * Close a data source connection: deregister it on the server (dropping
+ * any imported db tables) and, if the closed source is the one being
+ * viewed, clear the current view back to the empty state.
+ */
+export const closeDataSource = async (
+  sourceId: DataSourceId,
+  stateRef: StateRef<AppState>
+): Promise<void> => {
+  const appState = mutableGet(stateRef);
+  await appState.rtc.removeDataSource(sourceId);
+  const sourceIdStr = JSON.stringify(sourceId);
+  update(stateRef, (st: AppState): AppState => {
+    const viewSourceId = st.viewState?.dsPath.sourceId;
+    if (viewSourceId && JSON.stringify(viewSourceId) === sourceIdStr) {
+      return st
+        .set("viewState", null)
+        .set("focusedCell", null)
+        .set("sessionFilter", null)
+        .set("sessionColumns", null) as AppState;
+    }
+    return st;
+  });
+};
+
 export const openDataSourcePath = async (
   path: DataSourcePath,
   stateRef: StateRef<AppState>,
