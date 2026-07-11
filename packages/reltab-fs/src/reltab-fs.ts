@@ -337,6 +337,27 @@ export class FSDriver implements DbDriver {
   async getDisplayName(): Promise<string> {
     return this.displayName;
   }
+
+  /**
+   * Drop everything this driver imported into the shared DuckDB
+   * instance: parquet files are a VIEW unless materialized into a
+   * TABLE; CSV imports are always a TABLE.
+   */
+  async dispose(): Promise<void> {
+    for (const [targetPath, importInfo] of Object.entries(this.importMap)) {
+      const isView =
+        path.extname(targetPath) === ".parquet" && !importInfo.materialized;
+      const dropStmt = `DROP ${isView ? "VIEW" : "TABLE"} IF EXISTS ${
+        importInfo.tableName
+      }`;
+      try {
+        await this.dbc.runSqlQuery(dropStmt);
+      } catch (err) {
+        log.warn("FSDriver.dispose: ", dropStmt, " failed: ", err);
+      }
+      delete this.importMap[targetPath];
+    }
+  }
 }
 
 async function connectFileSource(

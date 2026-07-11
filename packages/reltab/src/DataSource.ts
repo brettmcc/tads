@@ -147,6 +147,12 @@ export interface DbDriver {
 
   /** Estimate the in-memory size of the dataset before materializing. */
   getMaterializeEstimate?(path: DataSourcePath): Promise<MaterializeEstimate>;
+
+  /**
+   * Release any database resources held for this data source (imported
+   * tables, views). Called when the user closes the connection.
+   */
+  dispose?(): Promise<void>;
 }
 
 /**

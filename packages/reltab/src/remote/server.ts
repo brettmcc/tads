@@ -27,6 +27,7 @@ import {
   DataSourceNode,
   DataSourcePath,
   DataSourceProvider,
+  DbDataSource,
   MaterializeEstimate,
 } from "../DataSource";
 import { deserializeQueryReq, QueryExp } from "../QueryExp";
@@ -287,6 +288,42 @@ export async function getConnection(
   return connPromise;
 }
 
+/**
+ * Deregister a data source connection so it no longer appears in
+ * getDataSources, releasing any db resources it holds (imported
+ * tables/views) via the driver's optional dispose hook.
+ */
+export async function removeConnection(sourceId: DataSourceId): Promise<void> {
+  const key = JSON.stringify(sourceId);
+  const connPromise = instanceCache[key];
+  if (!connPromise) {
+    return;
+  }
+  delete instanceCache[key];
+  const conn = await connPromise;
+  resolvedConnections = resolvedConnections.filter((c) => c !== conn);
+  if (exportConnection === conn) {
+    exportConnection = null;
+  }
+  if (conn instanceof DbDataSource) {
+    try {
+      await conn.db.dispose?.();
+    } catch (err) {
+      log.warn("removeConnection: error disposing driver: ", err);
+    }
+  }
+}
+
+interface RemoveDataSourceRequest {
+  sourceId: DataSourceId;
+}
+
+const handleRemoveDataSource = async (
+  req: RemoveDataSourceRequest
+): Promise<void> => {
+  await removeConnection(req.sourceId);
+};
+
 const connectionNodeId = async (
   conn: DataSourceConnection
 ): Promise<DataSourceId> => {
@@ -349,6 +386,10 @@ export const serverInit = (ts: TransportServer) => {
   ts.registerInvokeHandler(
     "getDataSources",
     exceptionHandler(handleGetDataSources)
+  );
+  ts.registerInvokeHandler(
+    "removeDataSource",
+    exceptionHandler(handleRemoveDataSource)
   );
   ts.registerInvokeHandler(
     "DataSourceConnection.evalQuery",
@@ -420,5 +461,9 @@ export class LocalReltabConnection implements ReltabConnection {
 
   async getDataSources(): Promise<DataSourceId[]> {
     return getDataSources();
+  }
+
+  async removeDataSource(sourceId: DataSourceId): Promise<void> {
+    return removeConnection(sourceId);
   }
 }

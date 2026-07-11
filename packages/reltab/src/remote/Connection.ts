@@ -252,6 +252,12 @@ export interface ReltabConnection {
   connect(sourceId: DataSourceId): Promise<DataSourceConnection>;
 
   getDataSources(): Promise<DataSourceId[]>;
+
+  /**
+   * Close a data source connection: deregister it from the
+   * getDataSources list and release any db resources it holds.
+   */
+  removeDataSource(sourceId: DataSourceId): Promise<void>;
 }
 
 /**
@@ -275,5 +281,11 @@ export class RemoteReltabConnection implements ReltabConnection {
       .invoke("getDataSources", {})
       .then((res) => decodeResult(res as Result<any>))) as any;
     return ret["dataSourceIds"];
+  }
+
+  async removeDataSource(sourceId: DataSourceId): Promise<void> {
+    await this.tconn
+      .invoke("removeDataSource", { sourceId })
+      .then((res) => decodeResult(res as Result<any>));
   }
 }
