@@ -35,13 +35,11 @@ import * as oneref from "oneref";
 import { useState } from "react";
 import { Activity } from "./defs";
 import { mutableGet, StateRef } from "oneref";
-import { DataSourcePath, FilterExp, ReltabConnection, resolvePath } from "reltab";
+import { DataSourcePath, ReltabConnection, resolvePath } from "reltab";
 import { useDeepCompareEffect } from "use-deep-compare";
 import { Timer } from "../Timer";
 import { SimpleClipboard } from "./SimpleClipboard";
-import { CellClickData } from "./CellClickData";
 import { createDragDropManager } from "dnd-core";
-import { SelectionChangeData } from "./SelectionChangeData";
 /**
  * top level application pane
  */
@@ -54,19 +52,13 @@ export type NewWindowFn = (
 export interface AppPaneBaseProps {
   newWindow: NewWindowFn;
   openURL: OpenURLFn;
-  showDataSources?: boolean;
   clipboard: SimpleClipboard;
-  embedded: boolean;
-  rightFooterSlot?: JSX.Element;
-  onFilter?: (filterExp: FilterExp) => void;
   onBrowseExportPath?: (exportFormat: ExportFormat) => void;
   onExportFile?: (
     exportFormat: ExportFormat,
     exportPath: string,
     parquetExportOptions: ParquetExportOptions
   ) => void;
-  onCellClick?: (cell: CellClickData) => void;
-  onSelectionChange?: (data: SelectionChangeData) => void;
   // shown as an "Open Dataset" button when no dataset is loaded
   onOpenDataset?: () => void;
 }
@@ -405,23 +397,15 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
   appState,
   stateRef,
   clipboard,
-  showDataSources: rawShowDataSources,
   openURL,
-  embedded,
-  rightFooterSlot,
-  onFilter,
   onBrowseExportPath,
   onExportFile,
-  onCellClick,
-  onSelectionChange,
   onOpenDataset
 }: AppPaneProps) => {
   const { activity, exportBeginDialogOpen } = appState;
   const dataSourceExpanded = activity === "DataSource";
   const pivotPropsExpanded = activity === "Pivot";
   let mainContents: JSX.Element | null = null;
-  const showDataSources =
-    rawShowDataSources === undefined ? true : rawShowDataSources;
 
   const { rtc, viewState } = appState;
 
@@ -469,14 +453,13 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
         schema={viewState.baseSchema}
         viewParams={viewState.viewParams}
         delayedCalcMode={viewState.delayedCalcMode}
-        embedded={embedded}
         stateRef={stateRef}
       />
     );
     const loadingModal =
       timerShowModal(appState.appLoadingTimer) ||
       timerShowModal(viewState.loadingTimer) ? (
-        <LoadingModal embedded={embedded} />
+        <LoadingModal />
       ) : null;
     centerPane = (
       <div className="center-app-pane">
@@ -488,24 +471,16 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
           stateRef={stateRef}
           clipboard={clipboard}
           openURL={openURL}
-          embedded={embedded}
-          onCellClick={onCellClick}
-          onSelectionChange={onSelectionChange}
         />
         <ResultsPane appState={appState} stateRef={stateRef} />
         <CommandBar appState={appState} stateRef={stateRef} />
-        <Footer
-          appState={appState}
-          stateRef={stateRef}
-          rightFooterSlot={rightFooterSlot}
-          onFilter={onFilter}
-        />
+        <Footer appState={appState} stateRef={stateRef} />
       </div>
     );
   } else {
     pivotSidebar = null;
     if (timerShowModal(appState.appLoadingTimer)) {
-      centerPane = <LoadingModal embedded={embedded} />;
+      centerPane = <LoadingModal />;
     } else if (
       appState.initialized &&
       !appState.appLoadingTimer.running &&
@@ -531,19 +506,15 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
       centerPane = null;
     }
   }
-  const dataSourceSidebar = showDataSources ? (
+  const dataSourceSidebar = (
     <DataSourceSidebar expanded={dataSourceExpanded} stateRef={stateRef} />
-  ) : null;
+  );
   mainContents = (
     <div
       className={`container-fluid full-height main-container tad-app-pane ${Classes.DARK}`}
     >
       <DndProvider manager={dndManager}>
-        <ActivityBar
-          activity={activity}
-          showDataSources={showDataSources}
-          stateRef={stateRef}
-        />
+        <ActivityBar activity={activity} stateRef={stateRef} />
         {dataSourceSidebar}
         {pivotSidebar}
         {centerPane}

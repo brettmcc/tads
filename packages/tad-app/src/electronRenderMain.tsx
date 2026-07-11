@@ -134,7 +134,6 @@ const init = async () => {
         newWindow={newWindowFromDSPath}
         clipboard={clipboard}
         openURL={openURL}
-        embedded={false}
         onBrowseExportPath={(exportFormat: ExportFormat) =>
           ipcRenderer.send("browse-export-path", { exportFormat })
         }

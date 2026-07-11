@@ -93,26 +93,14 @@ const fastFilterRowCount = async (
   rt: DataSourceConnection,
   baseRowCount: number,
   filterExp: reltab.FilterExp,
-  filterQuery: reltab.QueryExp,
-  onViewRowCount?: (
-    query: reltab.QueryExp,
-    type: "filtered" | "unfiltered" | "view"
-  ) => void,
-  onViewRowCountResolved?: (
-    query: reltab.QueryExp,
-    rowCount: number,
-    type: "filtered" | "unfiltered" | "view"
-  ) => void
+  filterQuery: reltab.QueryExp
 ): Promise<number> => {
   if (filterExp.opArgs.length === 0) {
     // short circuit!
     return baseRowCount;
   }
 
-  onViewRowCount?.(filterQuery, "filtered");
-  const resolvedNumber = await rt.rowCount(filterQuery);
-  onViewRowCountResolved?.(filterQuery, resolvedNumber, "filtered");
-  return resolvedNumber;
+  return rt.rowCount(filterQuery);
 };
 /*
  * hacky opt for using filterRowCount as viewRowCount if not pivoted
@@ -122,26 +110,14 @@ const fastViewRowCount = async (
   rt: DataSourceConnection,
   filterRowCount: number,
   vpivots: Array<string>,
-  viewQuery: reltab.QueryExp,
-  onViewRowCount?: (
-    query: reltab.QueryExp,
-    type: "filtered" | "unfiltered" | "view"
-  ) => void,
-  onViewRowCountResolved?: (
-    query: reltab.QueryExp,
-    rowCount: number,
-    type: "filtered" | "unfiltered" | "view"
-  ) => void
+  viewQuery: reltab.QueryExp
 ): Promise<number> => {
   if (vpivots.length === 0) {
     // short circuit!
     return filterRowCount;
   }
 
-  onViewRowCount?.(viewQuery, "view");
-  const resolvedNumber = await rt.rowCount(viewQuery);
-  onViewRowCountResolved?.(viewQuery, resolvedNumber, "view");
-  return resolvedNumber;
+  return rt.rowCount(viewQuery);
 };
 /**
  * Use the current ViewParams to construct a QueryExp to send to
@@ -157,16 +133,7 @@ const requestQueryView = async (
   viewParams: ViewParams,
   showRecordCount: boolean,
   prevQueryView: QueryView | null | undefined,
-  baseRowCountCache?: WeakMap<reltab.QueryExp, number>,
-  onViewRowCount?: (
-    query: reltab.QueryExp,
-    type: "filtered" | "unfiltered" | "view"
-  ) => void,
-  onViewRowCountResolved?: (
-    query: reltab.QueryExp,
-    rowCount: number,
-    type: "filtered" | "unfiltered" | "view"
-  ) => void
+  baseRowCountCache?: WeakMap<reltab.QueryExp, number>
 ): Promise<QueryView> => {
   const schemaCols = baseSchema.columns;
   const aggMap: any = {};
@@ -196,26 +163,20 @@ const requestQueryView = async (
   if (cachedBaseCount !== undefined) {
     baseRowCount = cachedBaseCount;
   } else {
-    onViewRowCount?.(baseQuery, "unfiltered");
     baseRowCount = await rt.rowCount(baseQuery);
-    onViewRowCountResolved?.(baseQuery, baseRowCount, "unfiltered");
     baseRowCountCache?.set(baseQuery, baseRowCount);
   }
   const filterRowCount = await fastFilterRowCount(
     rt,
     baseRowCount,
     viewParams.filterExp,
-    filterQuery,
-    onViewRowCount,
-    onViewRowCountResolved
+    filterQuery
   );
   const rowCount = await fastViewRowCount(
     rt,
     filterRowCount,
     viewParams.vpivots,
-    treeQuery,
-    onViewRowCount,
-    onViewRowCountResolved
+    treeQuery
   ); // const t1 = performance.now() // eslint-disable-line
   // console.log('gathering row counts took ', (t1 - t0) / 1000, ' sec')
 
@@ -252,14 +213,8 @@ const requestDataView = async (
   viewParams: ViewParams,
   queryView: QueryView,
   offset: number,
-  limit: number,
-  onViewQuery?: (
-    query: reltab.QueryExp,
-    offset?: number,
-    limit?: number
-  ) => void
+  limit: number
 ): Promise<PagedDataView> => {
-  onViewQuery?.(queryView.query, offset, limit);
   const tableData = await rt.evalQuery(queryView.query, offset, limit);
   const dataView = mkDataView(
     viewParams,
@@ -292,8 +247,6 @@ function getObjectDiff(obj1: any, obj2: any) {
   return diff;
 }
 
-const noopSetLoadingCallback = (loading: boolean) => {};
-
 /**
  * A PivotRequester listens for changes on the appState and viewport and
  * manages issuing of query requests
@@ -320,29 +273,13 @@ export class PivotRequester {
    * newer data during fast scrolling */
   private dataRequestSeq: number = 0;
   errorCallback?: (e: Error) => void;
-  setLoadingCallback: (loading: boolean) => void;
   /** cache of unfiltered row counts, keyed by base query identity */
   private baseRowCountCache: WeakMap<reltab.QueryExp, number> =
     new WeakMap();
 
   constructor(
     stateRef: oneref.StateRef<AppState>,
-    errorCallback?: (e: Error) => void,
-    setLoadingCallback?: (loading: boolean) => void,
-    public onViewQuery?: (
-      query: reltab.QueryExp,
-      offset?: number,
-      limit?: number
-    ) => void,
-    public onViewRowCount?: (
-      query: reltab.QueryExp,
-      type: "filtered" | "unfiltered" | "view"
-    ) => void,
-    public onViewRowCountResolved?: (
-      query: reltab.QueryExp,
-      rowCount: number,
-      type: "filtered" | "unfiltered" | "view"
-    ) => void
+    errorCallback?: (e: Error) => void
   ) {
     const appState = mutableGet(stateRef);
     this.pendingQueryRequest = null;
@@ -352,7 +289,6 @@ export class PivotRequester {
     this.pendingOffset = 0;
     this.pendingLimit = 0;
     this.errorCallback = errorCallback;
-    this.setLoadingCallback = setLoadingCallback || noopSetLoadingCallback;
 
     addStateChangeListener(stateRef, (_) => {
       this.onStateChange(stateRef);
@@ -367,7 +303,6 @@ export class PivotRequester {
     stateRef: oneref.StateRef<AppState>,
     queryView: QueryView
   ): Promise<PagedDataView> {
-    this.setLoadingCallback(true);
     const appState: AppState = mutableGet(stateRef);
     const viewState = appState.viewState;
     const viewParams = viewState.viewParams;
@@ -383,8 +318,7 @@ export class PivotRequester {
       viewParams,
       queryView,
       offset,
-      limit,
-      this.onViewQuery
+      limit
     );
     this.pendingDataRequest = dreq;
     dreq.then((dataView) => {
@@ -402,7 +336,6 @@ export class PivotRequester {
               .set("dataView", dataView) as ViewState
         )
       );
-      this.setLoadingCallback(false);
       return dataView;
     });
     return dreq;
@@ -455,9 +388,7 @@ export class PivotRequester {
         this.pendingViewParams,
         appState.showRecordCount,
         queryView,
-        this.baseRowCountCache,
-        this.onViewRowCount,
-        this.onViewRowCountResolved
+        this.baseRowCountCache
       );
       this.pendingQueryRequest = qreq;
       this.pendingDataRequest = qreq
@@ -494,7 +425,6 @@ export class PivotRequester {
             err.message,
             err.stack
           );
-          this.setLoadingCallback(false);
           // TODO:
           // remoteErrorDialog("Error constructing view", err.message); // Now let's try and restore to previous view params:
           oneref.update(

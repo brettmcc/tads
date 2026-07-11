@@ -21,7 +21,6 @@ export interface PivotSidebarProps {
   viewParams: ViewParams;
   delayedCalcMode: boolean;
   onColumnClick?: (cid: string) => void;
-  embedded: boolean;
   stateRef: StateRef<AppState>;
 }
 
@@ -31,7 +30,6 @@ export const PivotSidebar: React.FC<PivotSidebarProps> = ({
   viewParams,
   delayedCalcMode,
   onColumnClick,
-  embedded,
   stateRef,
 }) => {
   const onLeafColumnSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {

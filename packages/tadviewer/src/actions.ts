@@ -69,56 +69,6 @@ export async function stopAppLoadingTimer(
   );
 }
 
-// replace current view in AppState with a query on the specified
-// dataSource
-export const setQueryView = async (
-  stateRef: StateRef<AppState>,
-  dsc: DataSourceConnection,
-  sqlQuery: string,
-  showColumnHistograms: boolean
-): Promise<void> => {
-  const appState = mutableGet(stateRef);
-
-  // console.log("replaceCurrentView: queryTableName: ", dsPath, queryTableName);
-
-  const baseQuery = reltab.sqlQuery(sqlQuery);
-  const baseSchema = await aggtree.getBaseSchema(
-    dsc,
-    baseQuery,
-    appState.showRecordCount
-  );
-
-  // start off with all columns displayed:
-  const displayColumns = baseSchema.columns.slice();
-
-  const openPaths = new PathTree();
-  const initialViewParams = new ViewParams({
-    displayColumns,
-    openPaths,
-    showColumnHistograms,
-  });
-
-  const viewState = new ViewState({
-    dbc: dsc,
-    baseSchema,
-    baseQuery,
-    viewParams: initialViewParams,
-    initialViewParams,
-  });
-
-  // We explicitly set rather than merge() because merge
-  // will attempt to deep convert JS objects to Immutables
-
-  await awaitableUpdate_(
-    stateRef,
-    (st: AppState): AppState =>
-      st
-        .set("viewState", viewState)
-        .set("sessionFilter", null)
-        .set("sessionColumns", null) as AppState
-  );
-};
-
 export const replaceCurrentView = async (
   dsPath: DataSourcePath,
   stateRef: StateRef<AppState>,
@@ -284,21 +234,6 @@ export const toggleShowRoot = (stateRef: StateRef<AppState>): void => {
     vpUpdate(
       (viewParams) =>
         viewParams.set("showRoot", !viewParams.showRoot) as ViewParams
-    )
-  );
-};
-export const setShowColumnHistograms = (
-  stateRef: StateRef<AppState>,
-  showColumnHistograms: boolean
-): void => {
-  update(
-    stateRef,
-    vpUpdate(
-      (viewParams) =>
-        viewParams.set(
-          "showColumnHistograms",
-          showColumnHistograms
-        ) as ViewParams
     )
   );
 };

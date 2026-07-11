@@ -27,7 +27,6 @@ import {
 import { CellFormatter } from "../FormatOptions";
 import { DataRow, PagedDataView } from "../PagedDataView";
 import { LoadingModal } from "./LoadingModal";
-import { Cell } from "./SelectionChangeData";
 import { SimpleClipboard } from "./SimpleClipboard";
 
 const { Slick } = SlickGrid;
@@ -395,13 +394,11 @@ const createGrid = (
     onHistogramBrushFilter,
     onSetSortKey,
     onGridClick,
-    onGridSelectionChange,
     onActiveCellChange,
     onSetColumnOrder,
     sortKey,
     clipboard,
     openURL,
-    embedded,
   } = props;
 
   const gridOptions = getGridOptions(props);
@@ -409,39 +406,6 @@ const createGrid = (
 
   const selectionModel = new CellSelectionModel();
   grid.setSelectionModel(selectionModel);
-  selectionModel.onSelectedRangesChanged.subscribe((e: any, args: any) => {
-    const { fromCell, toCell, fromRow, toRow } = args[0];
-
-    const gridCols = grid.getColumns();
-    // the synthetic row-number column carries no data
-    const selCells: number[] = [];
-    for (let col = fromCell; col <= toCell; col++) {
-      if (gridCols[col].id !== ROW_NUMBER_COL_ID) {
-        selCells.push(col);
-      }
-    }
-    const selectedColumns = selCells.map((col) => gridCols[col].id);
-
-    let items = [];
-    const gridData = grid.getData();
-
-    for (let row = fromRow; row <= toRow; row++) {
-      const rowData = gridData.getItem(row);
-      const selectedDataInRow = [];
-      for (const col of selCells) {
-        const cid = gridCols[col].id;
-        selectedDataInRow.push(rowData[cid]);
-      }
-      items.push(selectedDataInRow);
-    }
-
-    onGridSelectionChange?.(
-      { row: fromRow, column: fromCell },
-      { row: toRow, column: toCell },
-      selectedColumns,
-      items
-    );
-  });
 
   const copyManager = new CellCopyManager();
   grid.registerPlugin(copyManager);
@@ -473,14 +437,12 @@ const createGrid = (
   });
 
   // gross hack, but makes copy menu item work in Electron:
-  if (!embedded) {
-    document.addEventListener("copy", function (e) {
-      const ranges = grid.getSelectionModel().getSelectedRanges();
-      if (ranges && ranges.length != 0) {
-        copySelectedRange(ranges[0]);
-      }
-    });
-  }
+  document.addEventListener("copy", function (e) {
+    const ranges = grid.getSelectionModel().getSelectedRanges();
+    if (ranges && ranges.length != 0) {
+      copySelectedRange(ranges[0]);
+    }
+  });
   const rangeSelector = new CellRangeSelector();
 
   grid.registerPlugin(rangeSelector);
@@ -736,7 +698,6 @@ const createGridState = (
     showLoadingModal,
     clipboard,
     openURL,
-    embedded,
     isPivoted,
     showHiddenColumns,
     displayColumns,
@@ -796,12 +757,6 @@ export interface DataGridProps {
     columnId: string,
     cellVal: any
   ) => void;
-  onGridSelectionChange?: (
-    anchor: Cell,
-    focus: Cell,
-    columns: string[],
-    items: any[][]
-  ) => void;
   /** fires when the active (focused) cell moves, via click or keyboard */
   onActiveCellChange?: (
     row: number,
@@ -814,7 +769,6 @@ export interface DataGridProps {
   showRoot?: boolean;
   onSetColumnOrder?: (displayColumns: string[]) => void;
   openURL: OpenURLFn;
-  embedded: boolean;
 }
 
 export const DataGrid: React.FunctionComponent<DataGridProps> = (
@@ -827,7 +781,6 @@ export const DataGrid: React.FunctionComponent<DataGridProps> = (
     showLoadingModal,
     clipboard,
     openURL,
-    embedded,
   } = props;
   const containerIdRef = useRef(genContainerId());
   const [gridState, setGridState] = useState<GridState | null>(null);
@@ -882,7 +835,7 @@ export const DataGrid: React.FunctionComponent<DataGridProps> = (
     }
   };
 
-  const lm = showLoadingModal ? <LoadingModal embedded={embedded} /> : null;
+  const lm = showLoadingModal ? <LoadingModal /> : null;
 
   return (
     <div className="gridPaneOuter">

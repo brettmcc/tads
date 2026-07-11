@@ -11,13 +11,11 @@ import * as actions from "../actions";
 
 export interface ActivityBarProps {
   activity: Activity;
-  showDataSources: boolean;
   stateRef: StateRef<AppState>;
 }
 
 export const ActivityBar: React.FC<ActivityBarProps> = ({
   activity,
-  showDataSources,
   stateRef,
 }) => {
   const handleActivityClick =
@@ -46,9 +44,11 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({
     />
   );
 
-  const dataSourceButton = showDataSources
-    ? activityButton("DataSource", "database", "Data sources")
-    : null;
+  const dataSourceButton = activityButton(
+    "DataSource",
+    "database",
+    "Data sources"
+  );
 
   return (
     <div className={"activityBar"}>
