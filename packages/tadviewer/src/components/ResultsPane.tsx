@@ -211,6 +211,14 @@ const HistogramBlock: React.FunctionComponent<{
     x: block.binStart + (i + 0.5) * block.binWidth,
     y: freq,
   }));
+  // Graphite theme: Victory's material theme assumes a light canvas;
+  // recolor axes/labels for the dark results pane.
+  const axisStyle = {
+    axis: { stroke: "#343842" },
+    ticks: { stroke: "#343842" },
+    tickLabels: { fill: "#aeb5c2" },
+    grid: { stroke: "transparent" },
+  };
   return (
     <div className="command-histogram" data-testid="histogram-block">
       <VictoryChart
@@ -222,16 +230,19 @@ const HistogramBlock: React.FunctionComponent<{
       >
         <VictoryAxis
           label={block.variable}
-          style={{ axisLabel: { padding: 22 } }}
+          style={{
+            ...axisStyle,
+            axisLabel: { padding: 22, fill: "#aeb5c2" },
+          }}
         />
-        <VictoryAxis dependentAxis />
+        <VictoryAxis dependentAxis style={axisStyle} />
         <VictoryBar
           data={data}
           barWidth={Math.max(
             2,
             Math.floor(340 / Math.max(1, block.freqs.length)) - 2
           )}
-          style={{ data: { fill: "#137cbd" } }}
+          style={{ data: { fill: "#6ca4f8" } }}
         />
       </VictoryChart>
       <div className="command-result-text">

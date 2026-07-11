@@ -422,6 +422,14 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
 
   const { rtc, viewState } = appState;
 
+  // Graphite theme: Blueprint portals (dialogs, toasters, popovers)
+  // mount under document.body, outside our root div, so the dark class
+  // has to live there too.
+  useEffect(() => {
+    document.body.classList.add(Classes.DARK);
+    return () => document.body.classList.remove(Classes.DARK);
+  }, []);
+
   let dsPath = viewState?.dsPath;
 
   useDeepCompareEffect(() => {
@@ -501,7 +509,9 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
     <DataSourceSidebar expanded={dataSourceExpanded} stateRef={stateRef} />
   ) : null;
   mainContents = (
-    <div className="container-fluid full-height main-container tad-app-pane">
+    <div
+      className={`container-fluid full-height main-container tad-app-pane ${Classes.DARK}`}
+    >
       <DndProvider manager={dndManager}>
         <ActivityBar
           activity={activity}

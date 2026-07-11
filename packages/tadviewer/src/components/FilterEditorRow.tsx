@@ -254,8 +254,10 @@ export const FilterEditorRow: React.FunctionComponent<FilterEditorRowProps> = ({
         const customStyles = {
           control: (provided: any, state: any) => ({
             ...provided,
-            background: "#fff",
-            borderColor: "#9e9e9e",
+            background: "var(--tad-field-bg)",
+            borderColor: state.isFocused
+              ? "var(--tad-accent)"
+              : "var(--tad-field-border)",
             minHeight: selectHeight,
             boxShadow: state.isFocused ? null : null,
           }),
@@ -269,6 +271,25 @@ export const FilterEditorRow: React.FunctionComponent<FilterEditorRowProps> = ({
           input: (provided: any, state: any) => ({
             ...provided,
             margin: "0px",
+            color: "var(--tad-fg)",
+          }),
+          menu: (provided: any) => ({
+            ...provided,
+            background: "var(--tad-chrome)",
+            border: "1px solid var(--tad-border-strong)",
+          }),
+          option: (provided: any, state: any) => ({
+            ...provided,
+            background: state.isFocused ? "var(--tad-sel-bg)" : "transparent",
+            color: "var(--tad-fg)",
+          }),
+          multiValue: (provided: any) => ({
+            ...provided,
+            background: "var(--tad-chip-bg)",
+          }),
+          multiValueLabel: (provided: any) => ({
+            ...provided,
+            color: "var(--tad-chip-fg)",
           }),
           indicatorSeparator: (state: any) => ({
             display: "none",
