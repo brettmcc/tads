@@ -149,6 +149,7 @@ const init = async () => {
             parquetExportOptions,
           })
         }
+        onOpenDataset={() => ipcRenderer.invoke("openFileDialog")}
       />
     );
     const tRender = performance.now();

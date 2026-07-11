@@ -135,6 +135,10 @@ const appInit = (options: any) => {
   ipcMain.handle("newWindowFromDSPath", (event, dsPath) =>
     newWindowFromDSPath(dsPath)
   );
+  ipcMain.handle("openFileDialog", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return appWindow.openDialog("openFile", win ?? undefined);
+  });
   appMenu.createMenu(); // log.log('appInit: done')
 };
 
@@ -439,9 +443,10 @@ const initApp =
               appWindow.createFromFile(openFilePath); // dialog.showMessageBox({ message: openMsg })
             } else {
               if (noSrcFile && !awaitingOpenEvent) {
+                // open an empty window; the renderer shows an
+                // "Open Dataset" button instead of a startup file dialog
                 app.focus();
-                const win = await appWindow.newWindow();
-                appWindow.openDialog("openFile", win);
+                await appWindow.newWindow();
               }
             }
 

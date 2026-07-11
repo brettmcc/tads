@@ -67,6 +67,8 @@ export interface AppPaneBaseProps {
   ) => void;
   onCellClick?: (cell: CellClickData) => void;
   onSelectionChange?: (data: SelectionChangeData) => void;
+  // shown as an "Open Dataset" button when no dataset is loaded
+  onOpenDataset?: () => void;
 }
 
 export type AppPaneProps = AppPaneBaseProps & oneref.StateRefProps<AppState>;
@@ -411,7 +413,8 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
   onBrowseExportPath,
   onExportFile,
   onCellClick,
-  onSelectionChange
+  onSelectionChange,
+  onOpenDataset
 }: AppPaneProps) => {
   const { activity, exportBeginDialogOpen } = appState;
   const dataSourceExpanded = activity === "DataSource";
@@ -501,9 +504,32 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
     );
   } else {
     pivotSidebar = null;
-    centerPane = timerShowModal(appState.appLoadingTimer) ? (
-      <LoadingModal embedded={embedded} />
-    ) : null;
+    if (timerShowModal(appState.appLoadingTimer)) {
+      centerPane = <LoadingModal embedded={embedded} />;
+    } else if (
+      appState.initialized &&
+      !appState.appLoadingTimer.running &&
+      onOpenDataset
+    ) {
+      centerPane = (
+        <div className="center-app-pane empty-center-pane">
+          <div className="empty-center-content">
+            <div className="empty-center-message">No dataset loaded</div>
+            <Button
+              icon="folder-open"
+              intent="primary"
+              large={true}
+              onClick={onOpenDataset}
+              data-testid="open-dataset-button"
+            >
+              Open Dataset&hellip;
+            </Button>
+          </div>
+        </div>
+      );
+    } else {
+      centerPane = null;
+    }
   }
   const dataSourceSidebar = showDataSources ? (
     <DataSourceSidebar expanded={dataSourceExpanded} stateRef={stateRef} />
