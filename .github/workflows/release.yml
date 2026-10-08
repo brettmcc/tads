@@ -2,7 +2,8 @@
 # GitHub Release that triggered the workflow. electron-builder can only
 # target the OS it runs on, so each platform gets its own runner.
 #
-#   windows-latest -> NSIS installer (.exe) + blockmap + latest.yml
+#   windows-latest -> NSIS installer (.exe) + blockmap + latest.yml,
+#                     portable zip
 #   macos-latest   -> dmg + zip for arm64 and x64 (unsigned, unnotarized)
 #   ubuntu-latest  -> deb + rpm + tar.bz2
 name: release
@@ -58,6 +59,19 @@ jobs:
         if: matrix.name == 'windows'
         run: npm run dist:win -w packages/tad-app
 
+      # The unpacked app plus an empty "data" folder, which switches Tads to
+      # portable mode (app/portable.ts): it runs without installing and keeps
+      # its settings and caches in that folder.
+      - name: Build Windows portable zip
+        if: matrix.name == 'windows'
+        run: |
+          V=$(node -p "require('./packages/tad-app/package.json').version")
+          cd packages/tad-app/release
+          rm -rf Tads
+          cp -r win-unpacked Tads
+          mkdir Tads/data
+          7z a -tzip "Tads-$V-portable-win-x64.zip" Tads
+
       - name: Build macOS installers (arm64 + x64)
         if: matrix.name == 'macos'
         # invoke the workspace script directly: args after -- don't survive
@@ -81,7 +95,7 @@ jobs:
           V=$(node -p "require('./packages/tad-app/package.json').version")
           cd packages/tad-app/release
           case "${{ matrix.name }}" in
-            windows) assets=(*.exe *.exe.blockmap latest.yml) ;;
+            windows) assets=(*.exe *.exe.blockmap latest.yml *-portable-win-x64.zip) ;;
             macos)   assets=(*.dmg *.dmg.blockmap *-mac.zip *-mac.zip.blockmap latest-mac.yml) ;;
             linux)   assets=(*.deb *.rpm *.tar.bz2 latest-linux*.yml) ;;
           esac
@@ -112,7 +126,8 @@ jobs:
           }
           case "${{ matrix.name }}" in
             windows)
-              stable "Tads*Setup*$V.exe"     "Tads-Setup-windows-x64.exe" ;;
+              stable "Tads*Setup*$V.exe"     "Tads-Setup-windows-x64.exe"
+              stable "Tads-$V-portable-win-x64.zip" "Tads-portable-windows-x64.zip" ;;
             macos)
               stable "Tads-$V-arm64.dmg"     "Tads-macos-arm64.dmg"
               stable "Tads-$V.dmg"           "Tads-macos-x64.dmg" ;;
