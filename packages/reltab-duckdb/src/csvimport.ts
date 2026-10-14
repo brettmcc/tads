@@ -13,6 +13,7 @@ import {
   queryRows,
 } from "./duckdbAdapter";
 import { duckDbPathLiteral } from "./dbPath";
+import { explainParquetError } from "./parquetDiagnose";
 import { initS3 } from "./s3utils";
 let uniqMap: { [cid: string]: number } = {};
 
@@ -160,7 +161,7 @@ export const nativeParquetImport = async (
       await execStatements(dbConn, query);
     } catch (err) {
       console.log("caught exception while importing: ", err);
-      throw err;
+      throw explainParquetError(filePath, err);
     }
   } finally {
     closeConnection(dbConn);
@@ -230,6 +231,9 @@ export const dematerializeParquetTable = async (
        )});
        COMMIT;`
     );
+  } catch (err) {
+    // the file may have changed since it was imported
+    throw explainParquetError(filePath, err);
   } finally {
     closeConnection(dbConn);
   }

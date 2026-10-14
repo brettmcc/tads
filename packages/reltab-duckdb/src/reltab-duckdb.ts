@@ -35,6 +35,7 @@ import { initS3 } from "./s3utils";
 
 export * from "./csvimport";
 export * from "./dbPath";
+export * from "./parquetDiagnose";
 export {
   DuckDBDatabase,
   DuckDBConnection,
