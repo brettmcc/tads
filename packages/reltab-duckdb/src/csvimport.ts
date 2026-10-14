@@ -8,6 +8,7 @@ import * as path from "path";
 import prettyHRTime from "pretty-hrtime";
 import {
   closeConnection,
+  DuckDBConnection,
   DuckDBDatabase,
   execStatements,
   queryRows,
@@ -39,15 +40,32 @@ const isAlpha = (ch: string): boolean => /^[A-Z]$/i.test(ch);
 
 const MAXLEN = 16;
 
+let sqlKeywordCache: Set<string> | null = null;
+
+/*
+ * DuckDB keywords that can't be used as an unquoted table name, so a file
+ * named order.csv or binary.parquet needs a different table name.
+ */
+const sqlKeywords = async (dbConn: DuckDBConnection): Promise<Set<string>> => {
+  if (sqlKeywordCache === null) {
+    const rows = await queryRows(
+      dbConn,
+      "SELECT keyword_name FROM duckdb_keywords() WHERE keyword_category IN ('reserved', 'type_function')"
+    );
+    sqlKeywordCache = new Set(rows.map((r) => String(r.keyword_name).toLowerCase()));
+  }
+  return sqlKeywordCache;
+};
+
 /* generate a SQL table name from pathname */
-const genTableName = (pathname: string): string => {
+const genTableName = (pathname: string, keywords: Set<string>): string => {
   const extName = path.extname(pathname);
   const baseName = path.basename(pathname, extName);
   let baseIdent = mapIdent(baseName);
   if (baseIdent.length >= MAXLEN) {
     baseIdent = baseIdent.slice(0, MAXLEN);
   }
-  if (!isAlpha(baseIdent[0])) {
+  if (!isAlpha(baseIdent[0]) || keywords.has(baseIdent.toLowerCase())) {
     baseIdent = "t_" + baseIdent;
   }
   const tableName = uniquify(baseIdent);
@@ -89,7 +107,7 @@ export const nativeCSVImport = async (
   try {
     await initS3(dbConn);
     if (!tableName) {
-      tableName = genTableName(filePath);
+      tableName = genTableName(filePath, await sqlKeywords(dbConn));
     }
     const mkImportQuery = (opts: string[]): string => {
       const args = [duckDbPathLiteral(filePath), ...opts].join(", ");
@@ -150,7 +168,7 @@ export const nativeParquetImport = async (
   try {
     await initS3(dbConn);
     if (!tableName) {
-      tableName = genTableName(filePath);
+      tableName = genTableName(filePath, await sqlKeywords(dbConn));
     }
     const query = `CREATE OR REPLACE VIEW ${tableName} AS SELECT * FROM parquet_scan(${duckDbPathLiteral(
       filePath
