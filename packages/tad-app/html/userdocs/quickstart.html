@@ -37,7 +37,7 @@
         supported file types &mdash; on Windows, right-click a file and choose
         <strong>Open with&hellip; &gt; Tads</strong> to make it the default), drag it onto the Tads window,
         use <strong>File&hellip;Open</strong>, or launch from the command line
-        (<span class="code">tad somefile.parquet</span>) after the one-time setup below.
+        (<span class="code">tads somefile.parquet</span>) after the one-time setup below.
         </p>
         <div id="cmdLineSetup">
         </div>
@@ -207,7 +207,7 @@ To launch Tads from the command line, use the Control Panel to add <code>${appDi
     if (platform === 'win32') {
       installCmdHtml = winSetup(exeDir)
     } else if (platform === 'darwin') {
-      const installCmd = `sudo ln -s ${appScriptPath} /usr/local/bin/tad`
+      const installCmd = `sudo ln -s ${appScriptPath} /usr/local/bin/tads`
       installCmdHtml = unixSetup(installCmd)
     }
 
