@@ -26,8 +26,8 @@ import {
 import * as reltabDuckDB from "reltab-duckdb";
 import { DuckDBDriver } from "reltab-duckdb";
 
-export { dataFileExtensions, isIPFSPath, matchDataFileExtension } from "./defs";
-import { isIPFSPath, matchDataFileExtension } from "./defs";
+export { dataFileExtensions, isRemotePath, matchDataFileExtension } from "./defs";
+import { isRemotePath, matchDataFileExtension } from "./defs";
 
 interface ImportedFileInfo {
   baseName: string;
@@ -61,7 +61,7 @@ const isParquetPath = (fsPath: string): boolean =>
 
 interface ImportInfo {
   tableName: string; // table name used to import this table
-  importModTime?: Date; // mod time of the file at time of import, as returned from fs.stat() (iff not an IPFS path)
+  importModTime?: Date; // mod time of the file at time of import, as returned from fs.stat() (iff not a remote path)
   materialized?: boolean; // parquet only: data copied into an in-memory table
 }
 
@@ -72,7 +72,7 @@ export class FSDriver implements DbDriver {
   private dbc: DuckDBDriver;
   private rootPath: string;
   private isDir: boolean;
-  private isIPFS: boolean;
+  private isRemote: boolean;
   private importMap: ImportMap = {};
   private readonly displayName: string;
   readonly sourceId: DataSourceId;
@@ -82,12 +82,12 @@ export class FSDriver implements DbDriver {
     dbc: DuckDBDriver,
     rootPath: string,
     isDir: boolean,
-    isIPFS: boolean
+    isRemote: boolean
   ) {
     this.dbc = dbc;
     this.rootPath = rootPath;
     this.isDir = isDir;
-    this.isIPFS = isIPFS;
+    this.isRemote = isRemote;
     this.displayName = rootPath;
     this.sourceId = { providerName: "localfs", resourceId: rootPath };
   }
@@ -109,14 +109,14 @@ export class FSDriver implements DbDriver {
 
   async getDatasetInfo(dsPath: DataSourcePath): Promise<DatasetInfo> {
     const targetPath = this.getTargetPath(dsPath);
-    const sourceSizeBytes = this.isIPFS
+    const sourceSizeBytes = this.isRemote
       ? null
       : await reltabDuckDB.statFileSizeOrNull(targetPath, true);
     const importInfo = this.importMap[targetPath];
     // only local parquet files toggle between a parquet_scan view and an
     // in-memory table; CSV imports are always fully loaded already
     const canMaterialize =
-      !this.isIPFS &&
+      !this.isRemote &&
       importInfo !== undefined &&
       isParquetPath(targetPath);
     const materialized = importInfo?.materialized === true;
@@ -138,7 +138,7 @@ export class FSDriver implements DbDriver {
   ): Promise<MaterializeEstimate> {
     const targetPath = this.getTargetPath(dsPath);
     let estimatedBytes: number | null = null;
-    if (!this.isIPFS && isParquetPath(targetPath)) {
+    if (!this.isRemote && isParquetPath(targetPath)) {
       try {
         const rows: Row[] = await this.dbc.runSqlQuery(
           `SELECT CAST(sum(total_uncompressed_size) AS DOUBLE) AS est
@@ -167,7 +167,7 @@ export class FSDriver implements DbDriver {
     // ensure the file has been imported (also handles stale re-import)
     await this.getTableName(dsPath);
     const importInfo = this.importMap[targetPath];
-    if (this.isIPFS || !isParquetPath(targetPath)) {
+    if (this.isRemote || !isParquetPath(targetPath)) {
       throw new Error(
         "setMaterialized: only local parquet files can be loaded into memory"
       );
@@ -212,7 +212,7 @@ export class FSDriver implements DbDriver {
     return rootNode;
   }
   getTargetPath(dsPath: DataSourcePath): string {
-    return this.isIPFS
+    return this.isRemote
       ? this.rootPath
       : path.join(this.rootPath, ...dsPath.path);
   }
@@ -256,7 +256,7 @@ export class FSDriver implements DbDriver {
       } else {
         tableName = await reltabDuckDB.nativeCSVImport(this.dbc.db, targetPath);
       }
-      if (isIPFSPath(targetPath)) {
+      if (isRemotePath(targetPath)) {
         importInfo = {
           tableName,
         };
@@ -343,7 +343,7 @@ export class FSDriver implements DbDriver {
 async function connectFileSource(
   pathname: string
 ): Promise<DataSourceConnection> {
-  if (isIPFSPath(pathname)) {
+  if (isRemotePath(pathname)) {
     const dbc = await getDuckDBDriver();
     const driver = new FSDriver(dbc, pathname, false, true);
     const dsConn = new DbDataSource(driver);

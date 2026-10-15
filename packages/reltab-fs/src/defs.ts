@@ -32,9 +32,10 @@ export const matchDataFileExtension = (fileName: string): string | null => {
   return match;
 };
 
-const ipfsPathPrefixes = ["s3://", "https://"];
-export const isIPFSPath = (pathname: string): boolean => {
-  for (const prefix of ipfsPathPrefixes) {
+/** true for s3:// and https:// URLs, which DuckDB reads over the network */
+const remotePathPrefixes = ["s3://", "https://"];
+export const isRemotePath = (pathname: string): boolean => {
+  for (const prefix of remotePathPrefixes) {
     if (pathname.startsWith(prefix)) {
       return true;
     }

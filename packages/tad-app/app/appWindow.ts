@@ -18,7 +18,7 @@ import {
   LocalReltabConnection,
   resolvePath,
 } from "reltab";
-import { dataFileExtensions, isIPFSPath } from "reltab-fs/dist/defs";
+import { dataFileExtensions, isRemotePath } from "reltab-fs/dist/defs";
 import { profLog } from "./startupProf";
 
 // Keep a global reference of the window object, if you don't, the window will
@@ -251,7 +251,7 @@ export const createFromFile = async (
   targetPath: string
 ): Promise<BrowserWindow> => {
   let realTargetPath = targetPath;
-  if (!isIPFSPath(targetPath)) {
+  if (!isRemotePath(targetPath)) {
     realTargetPath = await fsPromises.realpath(targetPath);
   }
   const openParams = fileOpenParams(realTargetPath);

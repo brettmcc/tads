@@ -14,8 +14,7 @@
   "keywords": [
     "relational",
     "sql",
-    "database",
-    "sqlite"
+    "database"
   ],
   "author": "Antony Courtney <antony@antonycourtney.com>",
   "license": "MIT",

@@ -4,7 +4,7 @@
   },
   "testRegex": "/test/.*test.ts$",
   "testEnvironment": "node",
-  "testPathIgnorePatterns": ["/node_modules/", "/__snapshots__", "ipfs.test.ts"],
+  "testPathIgnorePatterns": ["/node_modules/", "/__snapshots__"],
   "moduleFileExtensions": ["ts", "js"],
   "testTimeout": 15000,
   "snapshotFormat": {

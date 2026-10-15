@@ -25,7 +25,7 @@ import path from "path";
 
 import pkgInfo from "../package.json";
 import { TransportServer, serverInit, DataSourcePath } from "reltab";
-import { isIPFSPath } from "reltab-fs/dist/defs";
+import { isRemotePath } from "reltab-fs/dist/defs";
 
 class ElectronTransportServer implements TransportServer {
   registerInvokeHandler(
@@ -198,13 +198,11 @@ const getTargetPath = (options: any, filePath: string): string => {
   let targetPath = undefined;
   let srcDir = options["executed-from"];
 
-  // TODO: should probably export and use isIPFSPath from
-  // reltab-fs
   if (
     srcDir &&
     filePath &&
     !filePath.startsWith("/") &&
-    !isIPFSPath(filePath)
+    !isRemotePath(filePath)
   ) {
     if (srcDir === ".") {
       srcDir = process.cwd();
