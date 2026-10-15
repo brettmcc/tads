@@ -17,8 +17,6 @@ import { getFormattedRows } from "./testUtils";
 
 const { col, constVal } = reltab;
 
-const coreTypes = reltab.SQLiteDialect.coreColumnTypes;
-
 let testCtx: DataSourceConnection;
 
 const q1 = reltab.tableQuery("barttest");

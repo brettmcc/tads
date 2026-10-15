@@ -6,37 +6,19 @@ export const columnSum = (
   var sum: number = 0;
 
   for (var i = 0; i < tableData.rowData.length; i++) {
-    sum += tableData.rowData[i][columnId] as number;
+    sum += Number(tableData.rowData[i][columnId]);
   }
   return sum;
 };
 
-type Handler = (err: any) => void;
-
-export const mkAsyncErrHandler = (t: any, msg: string): Handler => {
-  return (err) => {
-    console.error("caught async promise exception: ", err.stack);
-    t.fail(msg + ": " + err);
-  };
-};
-
-interface LogTableOptions {
-  maxRows?: number;
-}
-
-export const logTable = (
-  table: reltab.TableRep,
-  options: LogTableOptions | null = null
-): void => {
-  // Node's console-table package has slightly different synopsis
-  // than browser version; accepts column names as first arg:
-  const ctf: any = console.table;
-
-  const rowData =
-    options && options.maxRows
-      ? table.rowData.slice(0, options.maxRows)
-      : table.rowData;
-
-  // ctf(table.schema.columns, rowData);
-  ctf(rowData);
+/**
+ * Rows of an unordered query result in a stable order, so snapshots
+ * don't depend on DuckDB's (nondeterministic) GROUP BY output order.
+ */
+export const sortedRows = (table: reltab.TableRep): reltab.Row[] => {
+  const key = (row: reltab.Row) =>
+    JSON.stringify(row, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
+  return [...table.rowData].sort((a, b) =>
+    key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0
+  );
 };

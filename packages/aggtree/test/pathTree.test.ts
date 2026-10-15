@@ -1,12 +1,5 @@
-import * as sqlite3 from "sqlite3";
-import * as reltab from "reltab";
-import * as aggtree from "../src/aggtree";
 import { PathTree } from "../src/PathTree";
-import * as reltabSqlite from "reltab-sqlite";
-import { textSpanContainsPosition, textSpanContainsTextSpan } from "typescript";
-import { delimiter } from "path";
 import * as log from "loglevel";
-import * as util from "./testUtils";
 
 test("basic pathTree", () => {
   const pt0 = new PathTree();

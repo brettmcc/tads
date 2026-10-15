@@ -3,15 +3,15 @@
  */
 import { ColumnType } from "./ColumnType";
 import { SQLDialect } from "./dialect";
-import { SQLiteDialect, SQLiteDialectClass } from "./dialects/SQLiteDialect";
+import { DuckDBDialectClass } from "./dialects/DuckDBDialect";
 
 // Exported so that we can do things like pretty print a FilterExp for
 // UI or debugging even when no db connection / preferred dialect
-// available
-export const defaultDialect = SQLiteDialect;
-
+// available. A function rather than a constant: defs is part of an import
+// cycle with the dialect classes, so the instance may not exist yet when
+// this module first loads.
 export const getDefaultDialect = (): SQLDialect => {
-  return SQLiteDialectClass.getInstance();
+  return DuckDBDialectClass.getInstance();
 };
 
 export type Scalar = bigint | number | string | boolean | null;
