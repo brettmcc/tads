@@ -31,7 +31,6 @@ ManifestDPIAware true
   !insertmacro tadsRegisterExt ".csv" "Comma Separated Values"
   !insertmacro tadsRegisterExt ".tsv" "Tab Separated Values"
   !insertmacro tadsRegisterExt ".tad" "Tad Saved Workspace"
-  !insertmacro tadsRegisterExt ".sqlite" "Sqlite files"
   !insertmacro tadsRegisterExt ".duckdb" "DuckDb files"
   ; SHCNE_ASSOCCHANGED so Explorer picks up the new handler without a restart
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, p 0, p 0)'
@@ -42,7 +41,6 @@ ManifestDPIAware true
   !insertmacro tadsUnregisterExt ".csv" "Comma Separated Values"
   !insertmacro tadsUnregisterExt ".tsv" "Tab Separated Values"
   !insertmacro tadsUnregisterExt ".tad" "Tad Saved Workspace"
-  !insertmacro tadsUnregisterExt ".sqlite" "Sqlite files"
   !insertmacro tadsUnregisterExt ".duckdb" "DuckDb files"
   DeleteRegKey SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}"
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, p 0, p 0)'

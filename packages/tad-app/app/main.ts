@@ -24,26 +24,8 @@ const app = electron.app;
 import path from "path";
 
 import pkgInfo from "../package.json";
-import {
-  DataSourceId,
-  EvalQueryOptions,
-  TransportServer,
-  serverInit,
-  DataSourcePath,
-  DbDataSource,
-} from "reltab";
+import { TransportServer, serverInit, DataSourcePath } from "reltab";
 import { isIPFSPath } from "reltab-fs/dist/defs";
-
-require("console.table"); // Can insert delay in promise chain by:
-// delay(amount).then(() => ...)
-
-let delay = (ms: number) => {
-  if (ms > 0) {
-    log.log("injecting delay of ", ms, " ms");
-  }
-
-  return new Promise((resolve) => setTimeout(resolve, ms));
-};
 
 class ElectronTransportServer implements TransportServer {
   registerInvokeHandler(
@@ -80,34 +62,6 @@ const initMainAsync = async (options: any): Promise<void> => {
   }
   log.debug("initMainAsync: ", options);
 
-  /*
-  let rtc: reltabSqlite.SqliteContext;
-  let connKey: DataSourceId;
-
-  connKey = {
-    providerName: "sqlite",
-    resourceId: ":memory:",
-  };
-  rtc = (await getConnection(connKey)) as reltabSqlite.SqliteContext;
-  */
-  let connKey: DataSourceId;
-
-  /*
-  connKey = {
-    providerName: "duckdb",
-    resourceId: ":memory:",
-  };
-  */
-
-  /*
-  connKey = {
-    providerName: "localfs",
-    resourceId: "",
-  };
-  const rtc = await getConnection(connKey);
-
-  (global as any).appRtc = rtc;
-  */
   const ts = new ElectronTransportServer();
   serverInit(ts);
 
@@ -150,10 +104,9 @@ const optionDefinitions = [
     type: String,
     multiple: true,
     defaultOption: true,
-    typeLabel:
-      "{underline file}.csv or {underline file}.tad or sqlite://{underline file}/{underline table}",
+    typeLabel: "{underline file} or {underline directory}",
     description:
-      "CSV file(.csv with header row), Tads(.tad) file, Parquet file or sqlite file to view",
+      "CSV/TSV file (with header row), Parquet file, DuckDB database, Tads (.tad) workspace, or directory to view",
   },
   {
     name: "executed-from",

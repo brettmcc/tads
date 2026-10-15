@@ -222,8 +222,6 @@ export const createFromDSPath = async (
 function isDbFile(fspath: string): DataSourceProviderName | null {
   const ext = path.extname(fspath);
   switch (ext) {
-    case ".sqlite":
-      return "sqlite";
     case ".duckdb":
       return "duckdb";
   }
@@ -277,24 +275,8 @@ export const openDialog = async (
         // extensions like "csv.gz" must be reduced to their last segment
         extensions: Array.from(
           new Set(dataFileExtensions.map((ext) => ext.split(".").pop()!))
-        ).concat(["tad", "sqlite", "duckdb"]),
+        ).concat(["tad", "duckdb"]),
       },
-      /*
-      {
-        name: "Parquet files",
-        extensions: ["parquet"],
-      },
-      {
-        name: "TSV files",
-        extensions: ["tsv"],
-      },
-      {
-        name: "Tads Workspace files",
-        extensions: ["tad"],
-      },
-      { name: "SQLite files", extensions: ["sqlite"] },
-      { name: "DuckDb files", extensions: ["duckdb"] },
-      */
     ],
   });
   if (openRet.canceled) {

@@ -144,11 +144,6 @@
         "role": "Viewer"
       },
       {
-        "ext": "sqlite",
-        "name": "Sqlite files",
-        "role": "Viewer"
-      },
-      {
         "ext": "duckdb",
         "name": "DuckDb files",
         "role": "Viewer"

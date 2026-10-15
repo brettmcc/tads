@@ -1,6 +1,6 @@
 # Tads
 
-**Tads** is a desktop viewer for huge Parquet, CSV, DuckDB, and SQLite
+**Tads** is a desktop viewer for huge Parquet, CSV, and DuckDB
 files with a Stata-style command bar. The goal is to bridge the gap
 between Stata and Parquet: a lightning-fast way to peruse large files,
 filter rows and columns with familiar Stata syntax, and compute simple
@@ -197,10 +197,8 @@ The monorepo uses npm workspaces. Packages used to build Tads:
 - [**tad-app**](./packages/tad-app/) - the Electron desktop application.
 
 Upstream Tad's proof-of-concept packages (web app/server and the AWS
-Athena, BigQuery, and Snowflake drivers) have been removed from this
-fork; it targets the desktop app and DuckDB only. `reltab-sqlite`
-remains in the tree but outside the default build (its legacy `sqlite3`
-dependency needs an old native toolchain). See upstream
+Athena, BigQuery, Snowflake, and SQLite drivers) have been removed from
+this fork; it targets the desktop app and DuckDB only. See upstream
 [antonycourtney/tad](https://github.com/antonycourtney/tad) if you need
 them.
 

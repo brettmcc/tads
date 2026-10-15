@@ -27,13 +27,8 @@ export type DataSourceKind =
 
 // Static registry of globally unique DataSourceProvider names:
 export type DataSourceProviderName =
-  | "aws-athena"
-  | "bigquery"
   | "duckdb"
-  | "sqlite"
-  | "snowflake"
-  | "localfs"
-  | "motherduck";
+  | "localfs";
 
 export interface DataSourceId {
   providerName: DataSourceProviderName;
