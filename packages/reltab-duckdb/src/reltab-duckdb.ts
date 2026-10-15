@@ -383,24 +383,20 @@ export class DuckDBDriver implements DbDriver {
   }
 }
 
-const loadExtensions = async (db: DuckDBDatabase): Promise<void> => {
-  const conn = await db.connect();
-  try {
-    await execStatements(conn, `INSTALL 'httpfs'; LOAD 'httpfs'`);
-  } catch (err) {
-    log.error("caught exception loading extensions: ", err);
-    log.error("(ignoring unloadable extensions...)");
-  } finally {
-    closeConnection(conn);
-  }
-};
+/*
+ * No extensions are installed or loaded up front. DuckDB autoinstalls and
+ * autoloads httpfs the first time a query touches an https:// or s3://
+ * path, so local files never need it. Doing it eagerly made every launch
+ * download (first run) and load an unsigned DLL from extensions.duckdb.org:
+ * slow, or a long hang, behind corporate proxies, and blocked by Windows
+ * Smart App Control / WDAC with a "couldn't verify who published" notice.
+ */
 
 const duckdbDataSourceProvider: DataSourceProvider = {
   providerName: "duckdb",
   connect: async (resourceId: any): Promise<DataSourceConnection> => {
     const dbfile = resourceId as string;
     const db = await DuckDBDatabase.open(dbfile);
-    await loadExtensions(db);
     const driver = new DuckDBDriver(dbfile, db);
     const dsConn = new DbDataSource(driver);
     return dsConn;
