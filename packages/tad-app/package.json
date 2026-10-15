@@ -103,7 +103,6 @@
       "**/@duckdb/**",
       "**/*reltab*"
     ],
-    "afterPack": "./tools/afterPack.js",
     "afterSign": "./tools/notarize.js",
     "buildNumber": "1",
     "directories": {
