@@ -1,4 +1,6 @@
 import "source-map-support/register";
+// first: switches to portable mode before electron-log is loaded (see portable.ts)
+import { usePortableLogFile } from "./portable";
 import commandLineArgs, {
   CommandLineOptions,
   ParseOptions,
@@ -486,6 +488,7 @@ const initApp =
 
 const main = () => {
   profLog("main() entry");
+  usePortableLogFile(log);
   // turn off console logging on win32:
   if (process.platform === "win32") {
     log.transports.file.level = false;

@@ -84,6 +84,14 @@ anyway**. Tads then shows up in the Start menu and as an **Open
 With...** choice for `.csv`, `.parquet`, `.tad`, and similar files;
 uninstall it from **Settings → Apps**.
 
+**Portable (no installation):** get `Tads-<version>-portable-win-x64.zip`,
+unpack it anywhere (a folder you can write to, or a USB stick), and run
+`Tads.exe` in the `Tads` folder. The `data` folder next to `Tads.exe`
+puts Tads in portable mode: everything it writes stays in that folder
+instead of your user profile, and nothing is registered with Windows
+(no Start menu entry or file associations). To remove it, delete the
+folder.
+
 ### macOS
 
 **Download:** get `Tads-<version>-arm64.dmg` for Apple Silicon
@@ -163,7 +171,9 @@ with `gh workflow run release.yml -f tag=vX.Y.Z`.
 
 `npm run pack` produces an unpacked runnable app
 (`packages/tad-app/release/win-unpacked/`) for smoke-testing without
-touching an installed copy.
+touching an installed copy. Creating an empty `data` folder next to
+`Tads.exe` in it makes it portable, which is how the release workflow
+builds the portable Windows zip.
 
 On macOS, to launch Tads from the terminal (`tad somefile.parquet`),
 symlink the bundled launcher script onto your PATH:
