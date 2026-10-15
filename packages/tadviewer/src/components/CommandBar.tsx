@@ -149,6 +149,9 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     }
     setHistIndex(null);
     setCompletionMenu(null);
+    // keep the prompt ready for the next command, Stata-style -- also
+    // reclaims focus when the command was launched with the Run button
+    inputRef.current?.focus();
   };
 
   const navigateHistory = (delta: -1 | 1) => {
@@ -241,6 +244,16 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (commandRunning) {
+      // the input is read-only while a command runs; swallow keys that
+      // would otherwise run, recall, or complete a command
+      if (
+        ["Enter", "ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(e.key)
+      ) {
+        e.preventDefault();
+      }
+      return;
+    }
     if (completionMenu !== null) {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
@@ -336,7 +349,10 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
           autoComplete="off"
           placeholder='Stata-style command, e.g. sum price if mpg > 20 (browse, sum, tab, codebook)'
           value={inputValue}
-          disabled={commandRunning}
+          // readOnly rather than disabled: disabling the input would
+          // drop keyboard focus every time a command runs
+          readOnly={commandRunning}
+          aria-busy={commandRunning}
           onChange={(e) => {
             setInputValue(e.target.value);
             setLastError(null);

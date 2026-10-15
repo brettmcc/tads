@@ -186,6 +186,29 @@ describe("CommandBar", () => {
     );
   });
 
+  test("the input keeps focus after a command runs", async () => {
+    renderHarness();
+    const input = typeCommand("sum a");
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter" });
+    // read-only (not disabled) while running, so focus is never dropped
+    expect(input.readOnly).toBe(true);
+    expect(document.activeElement).toBe(input);
+    await screen.findByTestId("result-entry");
+    await waitFor(() => expect(input.readOnly).toBe(false));
+    expect(document.activeElement).toBe(input);
+
+    // launching from the Run button hands focus back to the input
+    typeCommand("sum b");
+    const runButton = screen.getByTestId("command-run-button");
+    runButton.focus();
+    fireEvent.click(runButton);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("result-entry")).toHaveLength(2)
+    );
+    await waitFor(() => expect(document.activeElement).toBe(input));
+  });
+
   test("errors are shown near the input, preserve typed text, and append", async () => {
     const stateRef = renderHarness();
     const input = typeCommand("sum nope");

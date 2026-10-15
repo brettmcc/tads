@@ -269,8 +269,14 @@ test("summarize appends a table to the results pane", async () => {
     "6.5",
   ]);
 
+  // the prompt keeps keyboard focus once the command finishes, so the
+  // next command can be typed without clicking back into the input
   const input = page.locator('[data-testid="command-input"]');
-  await input.press("PageUp");
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[data-testid="command-input"]');
+    return el === document.activeElement && !(el as HTMLInputElement).readOnly;
+  });
+  await page.keyboard.press("PageUp");
   expect(await input.inputValue()).toBe("sum a b if a >= 3");
 }, 90000);
 
