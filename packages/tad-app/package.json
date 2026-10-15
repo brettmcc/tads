@@ -1,7 +1,7 @@
 {
   "name": "tads",
   "version": "0.16.0",
-  "homepage": "https://www.tadviewer.com",
+  "homepage": "https://github.com/brettmcc/tads",
   "description": "Tads: Tad tabular data viewer with Stata-style commands, built with Electron",
   "main": "dist/main.bundle.js",
   "repository": {
@@ -11,7 +11,6 @@
   "scripts": {
     "clean": "rimraf dist",
     "build:dir": "mkdirp dist",
-    "build:tadviewer-assets": "recursive-copy -w node_modules/tadviewer/dist/public dist/public",
     "build:html": "recursive-copy -w html dist",
     "build:preload": "recursive-copy -w app/preload.js dist/preload.js",
     "build:icon": "mkdirp buildRes && recursive-copy -w res/AppIcon.icns buildRes/icon.icns && recursive-copy -w res/blue_external_drive.icns buildRes/dmgIcon.icns",
@@ -45,11 +44,8 @@
   "license": "MIT",
   "dependencies": {
     "aggtree": "^0.14.0",
-    "babel-cli": "^6.26.0",
-    "babel-plugin-flow-to-typescript": "^0.6.0",
     "command-line-args": "^5.2.0",
     "command-line-usage": "^6.1.1",
-    "console.table": "^0.10.0",
     "electron-log": "^4.4.4",
     "electron-updater": "^4.6.1",
     "fast-csv": "^4.3.6",
