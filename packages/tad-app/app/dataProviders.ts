@@ -1,3 +1,4 @@
+import { portableDuckDbDirs } from "./portable";
 import { profLog } from "./startupProf";
 
 let providersPromise: Promise<void> | null = null;
@@ -17,7 +18,13 @@ export function loadDataProviders(): Promise<void> {
       // current tick with the synchronous native-library load
       setImmediate(() => {
         try {
-          require("reltab-duckdb");
+          const reltabDuckDB = require("reltab-duckdb");
+          // before reltab-fs, whose first file open creates the DuckDB
+          // instance and installs extensions
+          const duckDbDirs = portableDuckDbDirs();
+          if (duckDbDirs != null) {
+            reltabDuckDB.setDuckDbStorageDirs(duckDbDirs);
+          }
           require("reltab-fs");
           profLog("data providers loaded");
           resolve();

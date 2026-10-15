@@ -41,6 +41,25 @@ export function duckDbThreadCount(): number {
   return Math.max(1, cores - 1);
 }
 
+let storageOptions: Record<string, string> = {};
+
+/**
+ * Redirect the files DuckDB writes on its own: downloaded extensions
+ * (default ~/.duckdb/extensions) and spill files (default .tmp in the
+ * working directory for the in-memory database, <dbfile>.tmp otherwise).
+ * Portable mode points both into its data folder. Applies to databases
+ * opened after the call.
+ */
+export function setDuckDbStorageDirs(dirs: {
+  extensionDirectory: string;
+  tempDirectory: string;
+}): void {
+  storageOptions = {
+    extension_directory: dirs.extensionDirectory,
+    temp_directory: dirs.tempDirectory,
+  };
+}
+
 /**
  * Convert a DuckDB Neo value into the plain JS values reltab expects,
  * matching what the legacy duckdb-async driver returned:
@@ -139,6 +158,7 @@ export class DuckDBDatabase {
     const readOnly = opts?.readOnly ?? dbfile !== ":memory:";
     const options: Record<string, string> = {
       threads: String(duckDbThreadCount()),
+      ...storageOptions,
     };
     if (readOnly) {
       options.access_mode = "READ_ONLY";

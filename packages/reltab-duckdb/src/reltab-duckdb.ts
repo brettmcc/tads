@@ -44,6 +44,7 @@ export {
   queryRows,
   queryRowsWithColumnInfo,
   closeConnection,
+  setDuckDbStorageDirs,
 } from "./duckdbAdapter";
 
 const columnTypes = DuckDBDialect.columnTypes;

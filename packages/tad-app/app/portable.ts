@@ -1,7 +1,7 @@
 /**
  * Portable mode: when a folder named "data" sits next to the Tads executable,
  * keep everything Tads writes (Chromium profile and caches, install marker,
- * logs) in that folder instead of the per-user application data folder, so the
+ * logs, DuckDB extensions and spill files) in that folder instead of the per-user application data folder, so the
  * whole app can live on a USB stick or in a folder without being installed.
  * This is the Windows portable zip's layout; the installed app has no such
  * folder and is unaffected. Not used on macOS, where the executable is
@@ -41,6 +41,19 @@ if (portableDataDir != null) {
   app.setPath("userData", portableDataDir);
   app.setAppLogsPath(path.join(portableDataDir, "logs"));
 }
+
+/**
+ * In portable mode, the folders DuckDB should use for downloaded extensions
+ * and spill files instead of ~/.duckdb and the working directory; null
+ * otherwise.
+ */
+export const portableDuckDbDirs = () =>
+  portableDataDir == null
+    ? null
+    : {
+        extensionDirectory: path.join(portableDataDir, "duckdb", "extensions"),
+        tempDirectory: path.join(portableDataDir, "duckdb", "tmp"),
+      };
 
 /**
  * In portable mode, write log files to the data folder: electron-log picks
