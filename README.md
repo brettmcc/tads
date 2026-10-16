@@ -62,9 +62,7 @@ spelled in full, though the `duplicates` subcommand may be abbreviated
 as synonyms), `&`, `|`, parentheses, string/number/date literals, and
 Stata missing-value syntax: `x == .` / `x != .` / `x < .` (non-missing)
 / `x >= .` (missing) for numerics, and `s == ""` / `s != ""` for
-strings (matching both null and the empty string). Anything not in this
-table — `generate`, `replace`, `merge`, `regress`, ... — is
-intentionally out of scope.
+strings (matching both null and the empty string).
 
 See [doc/stata-commands.md](doc/stata-commands.md) for the complete
 language reference, session semantics, and safety guarantees.
@@ -181,26 +179,6 @@ symlink the bundled launcher script onto your PATH:
 ```sh
 ln -s "/Applications/Tads.app/Contents/Resources/tad.sh" /usr/local/bin/tad
 ```
-
-## Repository layout
-
-The monorepo uses npm workspaces. Packages used to build Tads:
-
-- [**reltab**](./packages/reltab) - programmatic construction and
-  execution of relational SQL queries; defines the driver interface and
-  the remoting layer between the renderer and the query backend.
-- [**reltab-duckdb**](./packages/reltab-duckdb/) - reltab driver for DuckDB.
-- [**aggtree**](./packages/aggtree/) - pivot trees on top of reltab.
-- [**tadviewer**](./packages/tadviewer/) - the pivot-table UI component,
-  the Stata command language (`src/stataCommand/`), command bar, and
-  results pane.
-- [**tad-app**](./packages/tad-app/) - the Electron desktop application.
-
-Upstream Tad's proof-of-concept packages (web app/server and the AWS
-Athena, BigQuery, Snowflake, and SQLite drivers) have been removed from
-this fork; it targets the desktop app and DuckDB only. See upstream
-[antonycourtney/tad](https://github.com/antonycourtney/tad) if you need
-them.
 
 ## Cross-validation
 
