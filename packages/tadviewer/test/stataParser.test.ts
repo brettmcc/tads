@@ -100,6 +100,11 @@ describe("command recognition and abbreviations", () => {
     ["cor a b", "correlate"],
     ["corr a b", "correlate"],
     ["correlate a b", "correlate"],
+    ["sc a b", "scatter"],
+    ["scat a b", "scatter"],
+    ["scatter a b", "scatter"],
+    ["tw sc a b", "scatter"],
+    ["twoway scatter a b", "scatter"],
   ];
   test.each(good)("'%s' -> %s", (input, kind) => {
     expect(parseCommand(input).kind).toBe(kind);
@@ -467,6 +472,32 @@ describe("if expressions", () => {
   });
 });
 
+describe("scatter", () => {
+  test("y variables come first, the x variable last", () => {
+    expect(parseCommand("scatter a b c if a > 1")).toMatchObject({
+      kind: "scatter",
+      yVariables: [v("a", 8), v("b", 10)],
+      xVariable: v("c", 12),
+      filter: { kind: "cmp", op: ">" },
+    });
+    expect(parseCommand("tw sc a b")).toMatchObject({
+      yVariables: [v("a", 6)],
+      xVariable: v("b", 8),
+    });
+  });
+
+  test.each([
+    ["scatter", "scatter requires a y variable and an x variable"],
+    ["sc a", "scatter requires a y variable and an x variable"],
+    ["sc a if b > 1", "scatter requires a y variable and an x variable"],
+    ["sc a b, msize(1)", "scatter does not take options"],
+    ["twoway line a b", "only scatter plots are supported after twoway"],
+    ["tw", "only scatter plots are supported after twoway"],
+  ])("error: %s", (input, msgPart) => {
+    expect(() => parseCommand(input)).toThrow(msgPart);
+  });
+});
+
 describe("by prefix", () => {
   test("by varlist: wraps the command", () => {
     expect(parseCommand("by c: sum a")).toEqual({
@@ -511,6 +542,7 @@ describe("by prefix", () => {
     ["by c: codebook", "codebook may not be combined with by"],
     ["by c: duplicates report", "duplicates may not be combined with by"],
     ["by c: histogram a", "histogram may not be combined with by"],
+    ["by c: scatter a b", "scatter may not be combined with by"],
     ["by c: sort a", "sort may not be combined with by"],
     ["by c: bro", "browse may not be combined with by"],
     ["by c: keep a", "keep may not be combined with by"],

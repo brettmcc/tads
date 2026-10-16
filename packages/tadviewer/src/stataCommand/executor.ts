@@ -33,6 +33,9 @@ import {
   HistogramPlan,
   ListPlan,
   planCommand,
+  SCATTER_POINT_LIMIT,
+  ScatterAxisKind,
+  ScatterPlan,
   SumDetailPlan,
   SummarizePlan,
   TabulatePlan,
@@ -85,6 +88,18 @@ export type ResultBlock =
       binStart: number;
       binWidth: number;
       freqs: number[];
+    }
+  | {
+      kind: "scatter";
+      xVariable: string;
+      xAxis: ScatterAxisKind;
+      yAxis: ScatterAxisKind;
+      /** observations with x and at least one y non-missing */
+      n: number;
+      /** observations plotted: all n, or a random sample of them */
+      plotted: number;
+      /** one series per y variable: its non-missing [x, y] pairs */
+      series: Array<{ variable: string; points: Array<[number, number]> }>;
     };
 
 /** view-state update applied by grid commands */
@@ -725,6 +740,46 @@ async function runHistogram(
   return { blocks: [block], sql: [plan.statsSql, binsSql].join(";\n\n") };
 }
 
+async function runScatter(
+  plan: ScatterPlan,
+  ctx: CommandExecutionContext
+): Promise<{ blocks: ResultBlock[]; sql: string }> {
+  const countRes = await ctx.runReadOnlySql(plan.countSql);
+  const n = asNumber((countRes.rows[0] ?? {}).n) ?? 0;
+  if (n === 0) {
+    return {
+      blocks: [{ kind: "text", text: "no observations" }],
+      sql: plan.countSql,
+    };
+  }
+  const pointsSql = plan.mkPointsSql(n > SCATTER_POINT_LIMIT);
+  const pointsRes = await ctx.runReadOnlySql(pointsSql);
+  const series = plan.yVariables.map((variable) => ({
+    variable,
+    points: [] as Array<[number, number]>,
+  }));
+  for (const row of pointsRes.rows) {
+    const x = asNumber(row.x);
+    if (x === null) continue;
+    series.forEach((s, i) => {
+      const y = asNumber(row[`y${i}`]);
+      if (y !== null) {
+        s.points.push([x, y]);
+      }
+    });
+  }
+  const block: ResultBlock = {
+    kind: "scatter",
+    xVariable: plan.xVariable,
+    xAxis: plan.xAxis,
+    yAxis: plan.yAxis,
+    n,
+    plotted: pointsRes.rows.length,
+    series,
+  };
+  return { blocks: [block], sql: [plan.countSql, pointsSql].join(";\n\n") };
+}
+
 async function runGrid(
   plan: GridPlan,
   ctx: CommandExecutionContext
@@ -849,6 +904,10 @@ export async function executeCommand(
       case "histogram": {
         const { blocks, sql } = await runHistogram(plan, ctx);
         return ok("histogram", input, sql, blocks);
+      }
+      case "scatter": {
+        const { blocks, sql } = await runScatter(plan, ctx);
+        return ok("scatter", input, sql, blocks);
       }
     }
   } catch (e) {

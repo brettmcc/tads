@@ -10,9 +10,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
 import {
+  CanvasGroup,
+  CanvasPoint,
   VictoryAxis,
   VictoryBar,
   VictoryChart,
+  VictoryScatter,
   VictoryTheme,
 } from "victory";
 import { AppState } from "../AppState";
@@ -254,6 +257,139 @@ const HistogramBlock: React.FunctionComponent<{
   );
 };
 
+/** series colors on the Graphite results pane, in y-variable order */
+const SCATTER_COLORS = [
+  "#6ca4f8",
+  "#f0a35e",
+  "#7cc68d",
+  "#d9798b",
+  "#b39ddb",
+  "#e6d36a",
+];
+
+type ScatterBlockData = ResultBlock & { kind: "scatter" };
+type ScatterAxis = ScatterBlockData["xAxis"];
+
+/**
+ * Dates arrive as epoch milliseconds of their wall-clock value. Shift them
+ * into a local Date showing the same wall clock, so the time scale's
+ * (local) ticks land on calendar boundaries.
+ */
+function wallClockDate(ms: number): Date {
+  return new Date(ms + new Date(ms).getTimezoneOffset() * 60000);
+}
+
+function scatterValue(v: number, axis: ScatterAxis): number | Date {
+  return axis === "numeric" ? v : wallClockDate(v);
+}
+
+function scatterTickFormat(axis: ScatterAxis) {
+  if (axis === "numeric") {
+    return undefined;
+  }
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (t: number | Date) => {
+    const d = new Date(t);
+    const day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    const midnight =
+      d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+    return axis === "date" || midnight
+      ? day
+      : `${day} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+}
+
+const ScatterBlock: React.FunctionComponent<{ block: ScatterBlockData }> = ({
+  block,
+}) => {
+  const series = useMemo(
+    () =>
+      block.series.map((s) => ({
+        variable: s.variable,
+        data: s.points.map(([x, y]) => ({
+          x: scatterValue(x, block.xAxis),
+          y: scatterValue(y, block.yAxis),
+        })),
+      })),
+    [block]
+  );
+  const axisStyle = {
+    axis: { stroke: "#343842" },
+    ticks: { stroke: "#343842" },
+    tickLabels: { fill: "#aeb5c2" },
+    grid: { stroke: "transparent" },
+  };
+  const scale = (axis: ScatterAxis) => (axis === "numeric" ? "linear" : "time");
+  const single = block.series.length === 1;
+  return (
+    <div className="command-scatter" data-testid="scatter-block">
+      <VictoryChart
+        theme={VictoryTheme.material}
+        scale={{ x: scale(block.xAxis), y: scale(block.yAxis) }}
+        domainPadding={8}
+        width={480}
+        height={300}
+        padding={{ top: 8, bottom: 40, left: 72, right: 24 }}
+      >
+        <VictoryAxis
+          label={block.xVariable}
+          tickFormat={scatterTickFormat(block.xAxis)}
+          style={{
+            ...axisStyle,
+            axisLabel: { padding: 26, fill: "#aeb5c2" },
+          }}
+        />
+        <VictoryAxis
+          dependentAxis
+          label={single ? block.series[0].variable : undefined}
+          tickFormat={scatterTickFormat(block.yAxis)}
+          style={{
+            ...axisStyle,
+            axisLabel: { padding: 56, fill: "#aeb5c2" },
+          }}
+        />
+        {series.map((s, i) => (
+          <VictoryScatter
+            key={s.variable}
+            data={s.data}
+            size={2}
+            groupComponent={<CanvasGroup />}
+            dataComponent={<CanvasPoint />}
+            style={{
+              data: {
+                fill: SCATTER_COLORS[i % SCATTER_COLORS.length],
+                opacity: 0.8,
+              },
+            }}
+          />
+        ))}
+      </VictoryChart>
+      {!single && (
+        <div className="scatter-legend">
+          {block.series.map((s, i) => (
+            <span key={s.variable} className="scatter-legend-item">
+              <span
+                className="scatter-legend-swatch"
+                style={{
+                  background: SCATTER_COLORS[i % SCATTER_COLORS.length],
+                }}
+              />
+              {s.variable}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="command-result-text">
+        {block.plotted < block.n
+          ? `random sample of ${block.plotted.toLocaleString(
+              "en-US"
+            )} of N = ${block.n.toLocaleString("en-US")} observations`
+          : `N = ${block.n.toLocaleString("en-US")}`}
+      </div>
+    </div>
+  );
+};
+
 const ResultBlockView: React.FunctionComponent<{ block: ResultBlock }> = ({
   block,
 }) => {
@@ -275,6 +411,8 @@ const ResultBlockView: React.FunctionComponent<{ block: ResultBlock }> = ({
       return <SumDetailBlock block={block} />;
     case "histogram":
       return <HistogramBlock block={block} />;
+    case "scatter":
+      return <ScatterBlock block={block} />;
   }
 };
 

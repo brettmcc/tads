@@ -55,6 +55,10 @@
  * - describe: variable names and SQL types plus the observation count.
  * - histogram: frequency histogram of a numeric variable; default bin
  *   count is Stata's min(sqrt(N), 10*log10(N)).
+ * - scatter: y variables against one x variable (numeric or date). An
+ *   observation counts when x and at least one y are non-missing; each
+ *   y series plots its own non-missing pairs. Beyond SCATTER_POINT_LIMIT
+ *   observations a uniform random sample of that many is plotted.
  *
  * By prefix (summarize, tabulate, correlate, distinct, count, list): the
  * plan carries a ByGroupsPlan listing the groups, and the command's own
@@ -356,6 +360,27 @@ export interface HistogramPlan {
   mkBinsSql(minVal: number, binWidth: number, binCount: number): string;
 }
 
+/** most observations a scatter plots; beyond this it plots a sample */
+export const SCATTER_POINT_LIMIT = 10000;
+
+/** how a scatter axis is scaled and labeled */
+export type ScatterAxisKind = "numeric" | "date" | "timestamp";
+
+export interface ScatterPlan {
+  kind: "scatter";
+  yVariables: string[];
+  xVariable: string;
+  xAxis: ScatterAxisKind;
+  yAxis: ScatterAxisKind;
+  /** phase 1: n, the observations with x and at least one y non-missing */
+  countSql: string;
+  /**
+   * phase 2: the points as DOUBLE columns x, y0, y1, ... (dates as epoch
+   * milliseconds); with `sample`, a random SCATTER_POINT_LIMIT of them
+   */
+  mkPointsSql(sample: boolean): string;
+}
+
 export type CommandPlan =
   | BrowsePlan
   | SummarizePlan
@@ -370,7 +395,8 @@ export type CommandPlan =
   | DescribePlan
   | DsPlan
   | GridPlan
-  | HistogramPlan;
+  | HistogramPlan
+  | ScatterPlan;
 
 /* ----------------- SQL literal / expression rendering ----------------- */
 
@@ -1442,6 +1468,92 @@ export function defaultHistogramBins(n: number): number {
   );
 }
 
+function scatterAxisKind(ctx: PlanContext, colId: string): ScatterAxisKind {
+  const sqlType = ctx.schema.columnMetadata[colId].columnType;
+  switch (summarizeVarKind(ctx, colId, columnTypeOf(ctx, colId))) {
+    case "numeric":
+      return "numeric";
+    case "date":
+      return sqlType === "DATE" ? "date" : "timestamp";
+    case "other":
+      throw new StataCommandError(
+        "plan",
+        `scatter requires numeric or date variables ('${colId}' is ${sqlType})`
+      );
+  }
+}
+
+function planScatter(
+  cmd: StataCommand & { kind: "scatter" },
+  ctx: PlanContext
+): ScatterPlan {
+  const xAxis = scatterAxisKind(ctx, cmd.xVariable);
+  const yKinds = cmd.yVariables.map((v) => scatterAxisKind(ctx, v));
+  const yNumeric = yKinds.filter((k) => k === "numeric").length;
+  if (yNumeric > 0 && yNumeric < yKinds.length) {
+    throw new StataCommandError(
+      "plan",
+      "scatter y variables must be all numeric or all dates"
+    );
+  }
+  const yAxis: ScatterAxisKind =
+    yNumeric > 0
+      ? "numeric"
+      : yKinds.every((k) => k === "date")
+      ? "date"
+      : "timestamp";
+
+  const q = (v: string) => ctx.dialect.quoteCol(v);
+  const valueExpr = (v: string, kind: ScatterAxisKind) =>
+    kind === "numeric"
+      ? `CAST(${q(v)} AS DOUBLE)`
+      : `CAST(epoch_ms(CAST(${q(v)} AS TIMESTAMP)) AS DOUBLE)`;
+  const yNotNull = cmd.yVariables.map((v) => `${q(v)} IS NOT NULL`);
+  const anyY =
+    yNotNull.length === 1 ? yNotNull[0] : `(${yNotNull.join(" OR ")})`;
+  const from = fromClause(ctx);
+  const where = whereClause(
+    cmd.filter,
+    ctx,
+    `${q(cmd.xVariable)} IS NOT NULL AND ${anyY}`
+  );
+
+  const countSql = [`SELECT count(*) AS n`, from, where].join("\n");
+  const pointsSql = [
+    ...selectList([
+      `${valueExpr(cmd.xVariable, xAxis)} AS x`,
+      ...cmd.yVariables.map((v, i) => `${valueExpr(v, yKinds[i])} AS y${i}`),
+    ]),
+    from,
+    where,
+  ].join("\n");
+  const mkPointsSql = (sample: boolean): string => {
+    if (!sample) {
+      return pointsSql;
+    }
+    const indented = pointsSql
+      .split("\n")
+      .map((line) => "  " + line)
+      .join("\n");
+    return [
+      `SELECT *`,
+      `FROM (`,
+      indented,
+      `)`,
+      `USING SAMPLE reservoir(${SCATTER_POINT_LIMIT} ROWS) REPEATABLE (1)`,
+    ].join("\n");
+  };
+  return {
+    kind: "scatter",
+    yVariables: cmd.yVariables,
+    xVariable: cmd.xVariable,
+    xAxis,
+    yAxis,
+    countSql,
+    mkPointsSql,
+  };
+}
+
 /* ------------------------- grid-state planning ------------------------ */
 
 function currentSortKey(ctx: PlanContext): Array<[string, boolean]> {
@@ -1612,5 +1724,7 @@ export function planCommand(cmd: StataCommand, ctx: PlanContext): CommandPlan {
       return planSort(cmd, ctx);
     case "histogram":
       return planHistogram(cmd, ctx);
+    case "scatter":
+      return planScatter(cmd, ctx);
   }
 }

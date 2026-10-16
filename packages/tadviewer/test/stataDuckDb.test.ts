@@ -962,6 +962,114 @@ describe("histogram", () => {
   });
 });
 
+describe("scatter", () => {
+  const byXY = (a: [number, number], b: [number, number]) =>
+    a[0] - b[0] || a[1] - b[1];
+
+  test("each y series plots its own non-missing pairs", async () => {
+    const outcome = await executeCommand("sc a b c", ctx);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect(outcome.sql).not.toContain("SAMPLE");
+    const block = outcome.blocks[0];
+    expect(block.kind).toBe("scatter");
+    if (block.kind !== "scatter") return;
+    // every row has c and at least one of a, b
+    expect(block.n).toBe(6);
+    expect(block.plotted).toBe(6);
+    expect(block.xAxis).toBe("numeric");
+    expect(block.series.map((s) => s.variable)).toEqual(["a", "b"]);
+    expect(block.series[0].points.sort(byXY)).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+      [3, 4],
+      [5, 6],
+    ]);
+    expect(block.series[1].points.sort(byXY)).toEqual([
+      [1, 1.5],
+      [2, 2.5],
+      [3, 4.5],
+      [5, 5.5],
+      [5, 6.5],
+    ]);
+  });
+
+  test("date and timestamp axes carry epoch milliseconds", async () => {
+    const dates = await executeCommand("sc a d", ctx);
+    if (dates.status !== "ok" || dates.blocks[0].kind !== "scatter") {
+      throw new Error(JSON.stringify(dates));
+    }
+    expect(dates.blocks[0].xAxis).toBe("date");
+    expect(dates.blocks[0].n).toBe(4);
+    expect(dates.blocks[0].series[0].points.sort(byXY)).toEqual([
+      [Date.UTC(2026, 0, 1), 1],
+      [Date.UTC(2026, 0, 2), 2],
+      [Date.UTC(2026, 0, 3), 3],
+      [Date.UTC(2026, 2, 1), 6],
+    ]);
+
+    const times = await executeCommand("tw sc a ts if a > 1", ctx);
+    if (times.status !== "ok" || times.blocks[0].kind !== "scatter") {
+      throw new Error(JSON.stringify(times));
+    }
+    expect(times.blocks[0].xAxis).toBe("timestamp");
+    expect(times.blocks[0].series[0].points.sort(byXY)).toEqual([
+      [Date.UTC(2026, 0, 2, 9, 30), 2],
+      [Date.UTC(2026, 0, 3, 10), 3],
+      [Date.UTC(2026, 2, 1, 23, 59, 59), 6],
+    ]);
+  });
+
+  test("the session filter applies; an empty result reports no observations", async () => {
+    ctx.sessionFilter = {
+      kind: "cmp",
+      op: ">",
+      lhs: { kind: "var", name: "c" },
+      rhs: { kind: "number", value: 2 },
+    };
+    const some = await executeCommand("sc a c", ctx);
+    if (some.status !== "ok" || some.blocks[0].kind !== "scatter") {
+      throw new Error(JSON.stringify(some));
+    }
+    expect(some.blocks[0].n).toBe(3);
+
+    const none = await executeCommand("sc a c if a > 100", ctx);
+    if (none.status !== "ok") throw new Error(none.error);
+    expect(none.blocks).toEqual([{ kind: "text", text: "no observations" }]);
+  });
+
+  test("scatter on a string column errors", async () => {
+    const outcome = await executeCommand("sc a s", ctx);
+    expect(outcome.status).toBe("error");
+    if (outcome.status !== "error") return;
+    expect(outcome.error).toContain("scatter requires numeric or date");
+  });
+
+  test("large inputs plot a random sample drawn after the filter", async () => {
+    const driver = dbds.db as reltabDuckDB.DuckDBDriver;
+    await driver.runSqlQuery(
+      "CREATE TABLE scatter_big AS SELECT i::INTEGER AS x, (2 * i)::DOUBLE AS y FROM range(25000) t(i)"
+    );
+    const bigCtx: CommandExecutionContext = {
+      ...ctx,
+      schema: await dbds.getTableSchema("scatter_big"),
+      baseQuery: tableQuery("scatter_big"),
+    };
+    const outcome = await executeCommand("sc y x if x >= 5000", bigCtx);
+    if (outcome.status !== "ok" || outcome.blocks[0].kind !== "scatter") {
+      throw new Error(JSON.stringify(outcome));
+    }
+    expect(outcome.sql).toContain("USING SAMPLE reservoir(10000 ROWS)");
+    const block = outcome.blocks[0];
+    expect(block.n).toBe(20000);
+    expect(block.plotted).toBe(10000);
+    const points = block.series[0].points;
+    expect(points).toHaveLength(10000);
+    expect(points.every(([x, y]) => x >= 5000 && y === 2 * x)).toBe(true);
+  });
+});
+
 describe("Stata 19 cross-validation", () => {
   test("matches Stata summarize, detail, tabulate, correlate, distinct, duplicates, and count results", async () => {
     const sum = await executeCommand("sum a", ctx);

@@ -316,5 +316,13 @@ function resolveCommandBody(
       }
       return { kind: "histogram", variable, filter, bins };
     }
+    case "scatter": {
+      const yVariables = resolveVarlist(cmd.yVariables, columns, false);
+      const xVariable = resolveVar(cmd.xVariable, columns);
+      const filter = maybeFilter(cmd.filter, columns);
+      return filter === undefined
+        ? { kind: "scatter", yVariables, xVariable }
+        : { kind: "scatter", yVariables, xVariable, filter };
+    }
   }
 }

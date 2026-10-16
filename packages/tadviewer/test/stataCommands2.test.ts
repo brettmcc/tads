@@ -20,6 +20,8 @@ import {
   negateExpr,
   planCommand,
   PlanContext,
+  SCATTER_POINT_LIMIT,
+  ScatterPlan,
   SumDetailPlan,
   SummarizePlan,
   TabulatePlan,
@@ -410,6 +412,54 @@ describe("list and histogram plans", () => {
     expect(defaultHistogramBins(100)).toBe(10);
     expect(defaultHistogramBins(10000)).toBe(40); // 10*log10 = 40 < 100
     expect(defaultHistogramBins(1)).toBe(1);
+  });
+});
+
+describe("scatter plan", () => {
+  test("counts usable observations, then selects the points", () => {
+    const p = plan("scatter price mpg d if mpg > 1") as ScatterPlan;
+    expect(p).toMatchObject({
+      kind: "scatter",
+      yVariables: ["price", "mpg"],
+      xVariable: "d",
+      xAxis: "date",
+      yAxis: "numeric",
+    });
+    const where = `WHERE ("mpg" > 1) AND "d" IS NOT NULL AND ("price" IS NOT NULL OR "mpg" IS NOT NULL)`;
+    expect(p.countSql).toContain("SELECT count(*) AS n");
+    expect(p.countSql).toContain(where);
+    const all = p.mkPointsSql(false);
+    expect(all).toContain(
+      `SELECT CAST(epoch_ms(CAST("d" AS TIMESTAMP)) AS DOUBLE) AS x,`
+    );
+    expect(all).toContain(`CAST("price" AS DOUBLE) AS y0,`);
+    expect(all).toContain(`CAST("mpg" AS DOUBLE) AS y1`);
+    expect(all).toContain(where);
+    expect(all).not.toContain("SAMPLE");
+    // the sample wraps the filtered rows, so it is drawn after the WHERE
+    const sampled = p.mkPointsSql(true);
+    expect(sampled).toContain(all.split("\n").map((l) => "  " + l).join("\n"));
+    expect(sampled).toMatch(
+      new RegExp(
+        `\\)\\nUSING SAMPLE reservoir\\(${SCATTER_POINT_LIMIT} ROWS\\) REPEATABLE \\(1\\)$`
+      )
+    );
+  });
+
+  test("a single y needs no OR", () => {
+    const p = plan("sc price mpg") as ScatterPlan;
+    expect(p.countSql).toContain(
+      `WHERE "mpg" IS NOT NULL AND "price" IS NOT NULL`
+    );
+  });
+
+  test("rejects strings and mixed numeric/date y variables", () => {
+    expect(() => plan("sc make price")).toThrow(
+      "scatter requires numeric or date variables ('make' is VARCHAR)"
+    );
+    expect(() => plan("sc price d mpg")).toThrow(
+      "scatter y variables must be all numeric or all dates"
+    );
   });
 });
 

@@ -46,6 +46,7 @@ their text in the input for correction.
 | `keep` | `keep varlist` or `keep if expr` | Keep visible variables, or accumulate a persistent row filter. |
 | `drop` | `drop varlist` or `drop if expr` | Drop visible variables, or accumulate the inverse of a row filter. |
 | `histogram` | `hist[ogram] var [if expr] [, bin(#)]` | Render a frequency histogram for a numeric variable. |
+| `scatter` | `[tw[oway]] sc[atter] yvar [yvar ...] xvar [if expr]` | Scatter plot of one or more numeric or date y variables against an x variable. |
 
 `summarize`, `tabulate`, `correlate`, `distinct`, `list`, and `count` also
 take a `by varlist:` / `bysort varlist:` prefix; see [By groups](#by-groups).
@@ -59,6 +60,8 @@ subcommands are rejected with a message.
 
 An omitted varlist means all currently visible variables for commands that
 permit it. `tabulate` and `histogram` take exactly one variable.
+`scatter` takes at least two: every variable but the last is plotted against
+the last, each y variable in its own color.
 
 ## By groups
 
@@ -207,6 +210,14 @@ display formatting (grouping only from 10,000 up, so years read cleanly).
 `list` returns at most 200 rows. Histogram bins default to
 `round(min(sqrt(N), 10*log10(N)))`.
 
+`scatter` uses an observation when x and at least one y variable are
+non-missing; each y variable plots only where it is non-missing itself. When
+more than 10,000 observations qualify, it plots a random sample of 10,000 and
+says so under the chart. The caption always reports the full N. Variables
+may be numeric or date/timestamp (with date axes), though the y variables
+must be all numeric or all dates. Graph options such as `msize()` are not
+supported.
+
 Examples:
 
 ```text
@@ -230,6 +241,8 @@ gsort -price make
 keep if year >= 2020
 drop temporary_*
 histogram price if price > 0, bin(30)
+scatter price mpg if foreign == 1
+twoway scatter price weight length
 ```
 
 ## Performance

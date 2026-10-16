@@ -100,6 +100,12 @@ export type ParsedCommandBody =
       variable: VarRef;
       filter?: ParsedExpr;
       bins?: number;
+    }
+  | {
+      kind: "scatter";
+      yVariables: VarRef[];
+      xVariable: VarRef;
+      filter?: ParsedExpr;
     };
 
 /* ----- resolved form ----- */
@@ -169,6 +175,12 @@ export type StataCommandBody =
   | { kind: "gsort"; keys: Array<{ name: string; descending: boolean }> }
   | { kind: "keep"; variables: string[]; filter?: Expr }
   | { kind: "drop"; variables: string[]; filter?: Expr }
-  | { kind: "histogram"; variable: string; filter?: Expr; bins?: number };
+  | { kind: "histogram"; variable: string; filter?: Expr; bins?: number }
+  | {
+      kind: "scatter";
+      yVariables: string[];
+      xVariable: string;
+      filter?: Expr;
+    };
 
 export type CommandKind = StataCommand["kind"];

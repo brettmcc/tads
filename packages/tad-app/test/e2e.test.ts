@@ -450,3 +450,35 @@ test("by prefix renders a header and table per group", async () => {
     .allTextContents();
   expect(nCells).toEqual(["0", "0", "2", "1"]);
 }, 90000);
+
+test("scatter draws its points on a canvas", async () => {
+  await runCommand("sc a b c");
+  const entries = page.locator('[data-testid="result-entry"]');
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="result-entry"]').length === 9,
+    undefined,
+    { timeout: 30000 }
+  );
+  const block = entries.last().locator('[data-testid="scatter-block"]');
+  await block.waitFor({ timeout: 30000 });
+  expect(await block.locator(".scatter-legend-item").allTextContents()).toEqual(
+    ["a", "b"]
+  );
+  expect(await block.locator(".command-result-text").textContent()).toBe(
+    "N = 6"
+  );
+  // one canvas per series, each with painted pixels
+  const painted = await block.evaluate((el) =>
+    Array.from(el.querySelectorAll("canvas")).map((c) => {
+      const data = c
+        .getContext("2d")!
+        .getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 0) n++;
+      return n;
+    })
+  );
+  expect(painted).toHaveLength(2);
+  expect(painted.every((n) => n > 0)).toBe(true);
+}, 90000);

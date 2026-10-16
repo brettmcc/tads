@@ -9,7 +9,7 @@
  *   command := browseCmd | summarizeCmd | tabulateCmd | correlateCmd
  *            | codebookCmd | distinctCmd | duplicatesCmd | describeCmd
  *            | dsCmd | listCmd | countCmd | orderCmd | sortCmd | gsortCmd
- *            | keepCmd | dropCmd | histogramCmd
+ *            | keepCmd | dropCmd | histogramCmd | scatterCmd
  *
  *   browseCmd    := BROWSE varlist? ifClause?
  *   summarizeCmd := SUM varlist? ifClause? options?      -- option: d[etail]
@@ -30,6 +30,8 @@
  *   keepCmd      := KEEP ( varlist | ifClause )
  *   dropCmd      := DROP ( varlist | ifClause )
  *   histogramCmd := HISTOGRAM varname ifClause? options? -- option: bin(#)
+ *   scatterCmd   := TWOWAY? SCATTER varname+ varname ifClause?
+ *                                    -- y variables first, x variable last
  *
  *   ifClause  := 'if' expr
  *   options   := ',' option+
@@ -67,6 +69,7 @@
  *   keep:      keep
  *   drop:      drop
  *   histogram: hist | histo | ... | histogram
+ *   scatter:   sc | sca | ... | scatter, optionally after tw | two | ... | twoway
  *
  * Notes:
  * - `by` and `bysort` are synonyms: groups are always formed in sorted
@@ -133,7 +136,13 @@ const COMMAND_FORMS: Array<{
   { kind: "keep", full: "keep", minPrefix: 4 },
   { kind: "drop", full: "drop", minPrefix: 4 },
   { kind: "histogram", full: "histogram", minPrefix: 4 },
+  { kind: "scatter", full: "scatter", minPrefix: 2 },
 ];
+
+/** `twoway` (abbreviated to at least `tw`), which may precede scatter */
+function isTwoway(name: string): boolean {
+  return name.length >= 2 && "twoway".startsWith(name);
+}
 
 function matchCommandName(name: string): CommandName | null {
   const matches = COMMAND_FORMS.filter(
@@ -303,7 +312,18 @@ class Parser {
   }
 
   private parseCommandBody(by: ParsedByPrefix | undefined): ParsedCommandBody {
-    const first = this.peek();
+    let first = this.peek();
+    if (first.type === "word" && isTwoway(first.text)) {
+      this.next();
+      const plot = this.peek();
+      if (!(plot.type === "word" && matchCommandName(plot.text) === "scatter")) {
+        this.error(
+          "only scatter plots are supported after twoway, e.g. twoway scatter y x",
+          plot.pos
+        );
+      }
+      first = plot;
+    }
     if (first.type === "eof") {
       this.error(
         by === undefined ? "empty command" : "expected a command after ':'"
@@ -318,7 +338,7 @@ class Parser {
     const kind = matchCommandName(first.text);
     if (kind === null) {
       this.error(
-        `unknown command '${first.text}': expected one of bro[wse], sum[marize], tab[ulate], cor[relate], codebook, distinct, duplicates, des[cribe], ds, list, cou[nt], ord[er], so[rt], gsort, keep, drop, hist[ogram]`,
+        `unknown command '${first.text}': expected one of bro[wse], sum[marize], tab[ulate], cor[relate], codebook, distinct, duplicates, des[cribe], ds, list, cou[nt], ord[er], so[rt], gsort, keep, drop, hist[ogram], sc[atter]`,
         first.pos
       );
     }
@@ -532,6 +552,22 @@ class Parser {
           return { kind, variable, filter };
         }
         return { kind, variable, filter, bins };
+      }
+      case "scatter": {
+        const variables = this.parseVarlist();
+        if (variables.length < 2) {
+          this.error(
+            "scatter requires a y variable and an x variable, e.g. scatter price weight"
+          );
+        }
+        const filter = this.parseOptionalIf();
+        this.expectNoOptions("scatter");
+        this.expectEof();
+        const yVariables = variables.slice(0, -1);
+        const xVariable = variables[variables.length - 1];
+        return filter === undefined
+          ? { kind, yVariables, xVariable }
+          : { kind, yVariables, xVariable, filter };
       }
     }
   }
