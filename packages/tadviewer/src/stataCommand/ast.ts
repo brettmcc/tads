@@ -45,7 +45,19 @@ export interface SignedVarRef {
   descending: boolean;
 }
 
-export type ParsedCommand =
+/**
+ * A `by varlist:` / `bysort varlist (sortvars):` prefix as written. The
+ * parenthesized variables only order observations within each group.
+ */
+export interface ParsedByPrefix {
+  variables: VarRef[];
+  sortVariables: VarRef[];
+}
+
+/** a parsed command, optionally under a by prefix */
+export type ParsedCommand = ParsedCommandBody & { by?: ParsedByPrefix };
+
+export type ParsedCommandBody =
   | { kind: "browse"; variables: VarRef[]; filter?: ParsedExpr }
   | {
       kind: "summarize";
@@ -107,7 +119,27 @@ export type Expr =
  * omitted varlist has been expanded to all columns where the command
  * permits it. keep/drop carry either columns or a row filter, never both.
  */
-export type StataCommand =
+/** a resolved by prefix: exact column ids */
+export interface ByPrefix {
+  variables: string[];
+  sortVariables: string[];
+}
+
+/** commands Stata accepts under a by prefix */
+export const BYABLE_COMMANDS: ReadonlySet<string> = new Set([
+  "summarize",
+  "tabulate",
+  "correlate",
+  "distinct",
+  "list",
+  "count",
+  "keep",
+  "drop",
+]);
+
+export type StataCommand = StataCommandBody & { by?: ByPrefix };
+
+export type StataCommandBody =
   | { kind: "browse"; variables: string[]; filter?: Expr }
   | { kind: "summarize"; variables: string[]; filter?: Expr; detail: boolean }
   | { kind: "tabulate"; variable: string; filter?: Expr; missing: boolean }

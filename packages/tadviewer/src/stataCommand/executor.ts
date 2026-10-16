@@ -21,9 +21,9 @@ import { formatCommandError, StataCommandError } from "./errors";
 import { parseCommand } from "./parser";
 import { resolveCommand } from "./resolve";
 import {
+  ByGroupsPlan,
   CodebookPlan,
   CorrelatePlan,
-  CountPlan,
   defaultHistogramBins,
   DescribePlan,
   DETAIL_PERCENTILES,
@@ -49,6 +49,8 @@ export type ResultBlock =
       rows: CellValue[][];
     }
   | { kind: "text"; text: string }
+  /** header introducing one group of a by-prefixed command */
+  | { kind: "byGroup"; label: string }
   | {
       kind: "codebookVar";
       variable: string;
@@ -162,20 +164,118 @@ const ok = (
 
 /* --------------------------- execution ---------------------------- */
 
-async function runSummarize(
-  plan: SummarizePlan,
+/* ---------------------------- by groups ---------------------------- */
+
+/** a group's key: its by_i values (VARCHAR, null for missing) */
+type GroupKey = Array<string | null>;
+
+function groupKeyOf(row: Row, nVars: number): GroupKey {
+  const key: GroupKey = [];
+  for (let i = 0; i < nVars; i++) {
+    key.push(asString(row[`by_${i}`]));
+  }
+  return key;
+}
+
+/** Stata's group header: "foreign = 1, rep78 = ." */
+function byGroupLabel(variables: string[], key: GroupKey): string {
+  return variables.map((v, i) => `${v} = ${key[i] ?? "."}`).join(", ");
+}
+
+interface ByGroupsResult {
+  groups: GroupKey[];
+  /** total number of groups, which may exceed groups.length */
+  nGroups: number;
+  /** the command query's rows, partitioned by group key */
+  rowsByGroup: Map<string, Row[]>;
+}
+
+/**
+ * Run a by-prefixed command's group-list query alongside its grouped
+ * query and partition the latter's rows by group.
+ */
+async function runByGroups(
+  by: ByGroupsPlan,
+  sql: string,
   ctx: CommandExecutionContext
-): Promise<ResultBlock[]> {
-  const res = await ctx.runReadOnlySql(plan.sql);
+): Promise<ByGroupsResult> {
+  const [groupsRes, res] = await Promise.all([
+    ctx.runReadOnlySql(by.groupsSql),
+    ctx.runReadOnlySql(sql),
+  ]);
+  const nVars = by.variables.length;
+  const rowsByGroup = new Map<string, Row[]>();
+  for (const row of res.rows) {
+    const k = JSON.stringify(groupKeyOf(row, nVars));
+    const bucket = rowsByGroup.get(k);
+    if (bucket === undefined) {
+      rowsByGroup.set(k, [row]);
+    } else {
+      bucket.push(row);
+    }
+  }
+  const groups = groupsRes.rows.map((row: Row) => groupKeyOf(row, nVars));
+  const nGroups = asNumber(groupsRes.rows[0]?.n_by_groups) ?? groups.length;
+  return { groups, nGroups, rowsByGroup };
+}
+
+/**
+ * Interleave a header per group with that group's result blocks; a group
+ * with no rows (every observation failed the `if`) gets render([]).
+ */
+function byGroupBlocks(
+  by: ByGroupsPlan,
+  result: ByGroupsResult,
+  render: (rows: Row[]) => ResultBlock[]
+): ResultBlock[] {
+  return [
+    ...result.groups.flatMap((key): ResultBlock[] => [
+      { kind: "byGroup", label: byGroupLabel(by.variables, key) },
+      ...render(result.rowsByGroup.get(JSON.stringify(key)) ?? []),
+    ]),
+    ...byTruncationNote(result.groups.length, result.nGroups),
+  ];
+}
+
+function byTruncationNote(shown: number, total: number): ResultBlock[] {
+  return total > shown
+    ? [{ kind: "text", text: `showing first ${shown} of ${total} groups` }]
+    : [];
+}
+
+/**
+ * Run a command's query, by group when it has a by prefix: `render` turns
+ * the rows of one group (or of the whole query) into result blocks.
+ */
+async function runMaybeBy(
+  plan: { by?: ByGroupsPlan; sql: string },
+  ctx: CommandExecutionContext,
+  render: (rows: Row[]) => ResultBlock[]
+): Promise<{ blocks: ResultBlock[]; sql: string }> {
+  if (plan.by === undefined) {
+    const res = await ctx.runReadOnlySql(plan.sql);
+    return { blocks: render(res.rows), sql: plan.sql };
+  }
+  const result = await runByGroups(plan.by, plan.sql, ctx);
+  return {
+    blocks: byGroupBlocks(plan.by, result, render),
+    sql: [plan.by.groupsSql, plan.sql].join(";\n\n"),
+  };
+}
+
+/* ------------------------- per-command output ------------------------- */
+
+function summarizeBlocks(plan: SummarizePlan, rows: Row[]): ResultBlock[] {
   // one wide row of per-variable aggregates; reshape to a row per variable
-  const wide: Row = res.rows[0] ?? {};
-  const rows = plan.variables.map((variable, idx): CellValue[] => {
+  // (no row at all for a by group the `if` emptied)
+  const wide: Row = rows[0] ?? {};
+  const tableRows = plan.variables.map((variable, idx): CellValue[] => {
     if (plan.varKinds[idx] === "date") {
       // mean/min/max arrive as date/timestamp strings; sd is in days
       const sdDays = asNumber(wide[`sd_${idx}`]);
       return [
         variable,
-        asNumber(wide[`n_${idx}`]),
+        asNumber(wide[`n_${idx}`]) ?? 0,
         asString(wide[`mean_${idx}`]),
         sdDays === null ? null : `${Number(sdDays.toPrecision(6))} days`,
         asString(wide[`min_${idx}`]),
@@ -184,7 +284,7 @@ async function runSummarize(
     }
     return [
       variable,
-      asNumber(wide[`n_${idx}`]),
+      asNumber(wide[`n_${idx}`]) ?? 0,
       asNumber(wide[`mean_${idx}`]),
       asNumber(wide[`sd_${idx}`]),
       asNumber(wide[`min_${idx}`]),
@@ -196,19 +296,22 @@ async function runSummarize(
       kind: "table",
       columns: ["Variable", "N", "Mean", "Std. dev.", "Min", "Max"],
       align: ["left", "right", "right", "right", "right", "right"],
-      rows,
+      rows: tableRows,
     },
   ];
 }
 
-async function runSumDetail(
+/**
+ * summarize, detail phase 2: one detail panel per variable, given the
+ * phase-1 row (N and mean per variable) of the whole session dataset or
+ * of one by group (`groupKey`).
+ */
+async function sumDetailBlocks(
   plan: SumDetailPlan,
-  ctx: CommandExecutionContext
-): Promise<{ blocks: ResultBlock[]; sql: string }> {
-  const phase1 = await ctx.runReadOnlySql(plan.phase1Sql);
-  const wide: Row = phase1.rows[0] ?? {};
-  const sqlParts: string[] = [plan.phase1Sql];
-
+  wide: Row,
+  ctx: CommandExecutionContext,
+  groupKey?: GroupKey
+): Promise<{ blocks: ResultBlock[]; sqls: string[] }> {
   const detailJobs = plan.variables.map(async (variable, idx) => {
     const n = asNumber(wide[`n_${idx}`]) ?? 0;
     const mean = asNumber(wide[`mean_${idx}`]);
@@ -229,7 +332,7 @@ async function runSumDetail(
       };
       return { block: empty, sql: null as string | null };
     }
-    const detailSql = plan.mkDetailSql(variable, n, mean);
+    const detailSql = plan.mkDetailSql(variable, n, mean, groupKey);
     const res = await ctx.runReadOnlySql(detailSql);
     const row: Row = res.rows[0] ?? {};
     const m2 = asNumber(row.m2);
@@ -272,11 +375,16 @@ async function runSumDetail(
   });
 
   const results = await Promise.all(detailJobs);
-  for (const r of results) {
-    if (r.sql !== null) {
-      sqlParts.push(r.sql);
-    }
-  }
+  return {
+    blocks: results.map((r) => r.block),
+    sqls: results.flatMap((r) => (r.sql === null ? [] : [r.sql])),
+  };
+}
+
+async function runSumDetail(
+  plan: SumDetailPlan,
+  ctx: CommandExecutionContext
+): Promise<{ blocks: ResultBlock[]; sql: string }> {
   const blocks: ResultBlock[] = [];
   if (plan.skipped.length > 0) {
     blocks.push({
@@ -284,25 +392,50 @@ async function runSumDetail(
       text: `note: omitted non-numeric variable(s): ${plan.skipped.join(", ")}`,
     });
   }
-  blocks.push(...results.map((r) => r.block));
-  return {
-    blocks,
-    sql: sqlParts.join(";\n\n"),
-  };
+  if (plan.by === undefined) {
+    const phase1 = await ctx.runReadOnlySql(plan.phase1Sql);
+    const detail = await sumDetailBlocks(plan, phase1.rows[0] ?? {}, ctx);
+    blocks.push(...detail.blocks);
+    return {
+      blocks,
+      sql: [plan.phase1Sql, ...detail.sqls].join(";\n\n"),
+    };
+  }
+  // by groups: phase 1 is one grouped scan; phase 2 depends on each
+  // group's N, so it runs group by group (variables concurrently)
+  const result = await runByGroups(plan.by, plan.phase1Sql, ctx);
+  let firstGroupSqls: string[] = [];
+  for (const key of result.groups) {
+    const wide = result.rowsByGroup.get(JSON.stringify(key))?.[0] ?? {};
+    const detail = await sumDetailBlocks(plan, wide, ctx, key);
+    blocks.push(
+      { kind: "byGroup", label: byGroupLabel(plan.by.variables, key) },
+      ...detail.blocks
+    );
+    if (firstGroupSqls.length === 0) {
+      firstGroupSqls = detail.sqls;
+    }
+  }
+  blocks.push(...byTruncationNote(result.groups.length, result.nGroups));
+  // the per-group detail queries differ only in their group condition,
+  // so only the first group's are recorded
+  const sqlParts = [plan.by.groupsSql, plan.phase1Sql, ...firstGroupSqls];
+  if (result.groups.length > 1 && firstGroupSqls.length > 0) {
+    sqlParts.push(
+      `-- the detail queries above repeat for each of the ${result.groups.length} groups`
+    );
+  }
+  return { blocks, sql: sqlParts.join(";\n\n") };
 }
 
-async function runTabulate(
-  plan: TabulatePlan,
-  ctx: CommandExecutionContext
-): Promise<ResultBlock[]> {
-  const res = await ctx.runReadOnlySql(plan.sql);
+function tabulateBlocks(plan: TabulatePlan, resRows: Row[]): ResultBlock[] {
   // percentages always display with two decimals (like Stata), so they
   // are formatted here rather than left to generic numeric display
   const pct = (v: unknown): CellValue => {
     const n = asNumber(v);
     return n === null ? null : n.toFixed(2);
   };
-  const rows = res.rows.map((row: Row): CellValue[] => [
+  const rows = resRows.map((row: Row): CellValue[] => [
     // Stata renders missing as "."
     row.value == null
       ? "."
@@ -317,7 +450,7 @@ async function runTabulate(
     (acc, r) => acc + ((r[1] as number | null) ?? 0),
     0
   );
-  const nGroups = asNumber(res.rows[0]?.n_groups) ?? rows.length;
+  const nGroups = asNumber(resRows[0]?.n_groups) ?? rows.length;
   const truncNote =
     nGroups > rows.length
       ? ` — showing first ${rows.length} of ${nGroups} distinct values`
@@ -346,18 +479,24 @@ async function runTabulate(
 async function runCorrelate(
   plan: CorrelatePlan,
   ctx: CommandExecutionContext
-): Promise<ResultBlock[]> {
-  const res = await ctx.runReadOnlySql(plan.sql);
-  const wide: Row = res.rows[0] ?? {};
-  const n = asNumber(wide.n) ?? 0;
-  const blocks: ResultBlock[] = [];
-  if (plan.skipped.length > 0) {
-    blocks.push({
-      kind: "text",
-      text: `note: omitted non-numeric variable(s): ${plan.skipped.join(", ")}`,
-    });
+): Promise<{ blocks: ResultBlock[]; sql: string }> {
+  const { blocks, sql } = await runMaybeBy(plan, ctx, (rows) =>
+    correlateBlocks(plan, rows[0] ?? {})
+  );
+  if (plan.skipped.length === 0) {
+    return { blocks, sql };
   }
-  blocks.push({ kind: "text", text: `(obs=${n})` });
+  // the note precedes all by groups rather than repeating in each
+  const note: ResultBlock = {
+    kind: "text",
+    text: `note: omitted non-numeric variable(s): ${plan.skipped.join(", ")}`,
+  };
+  return { blocks: [note, ...blocks], sql };
+}
+
+function correlateBlocks(plan: CorrelatePlan, wide: Row): ResultBlock[] {
+  const n = asNumber(wide.n) ?? 0;
+  const blocks: ResultBlock[] = [{ kind: "text", text: `(obs=${n})` }];
   if (n === 0) {
     return blocks;
   }
@@ -433,12 +572,7 @@ async function runCodebook(
  * Distinct renders one row per variable (or a single row for the whole
  * varlist with `joint`), matching Stata's total / distinct panel.
  */
-async function runDistinct(
-  plan: DistinctPlan,
-  ctx: CommandExecutionContext
-): Promise<ResultBlock[]> {
-  const res = await ctx.runReadOnlySql(plan.sql);
-  const wide: Row = res.rows[0] ?? {};
+function distinctBlocks(plan: DistinctPlan, wide: Row): ResultBlock[] {
   const rows: CellValue[][] = plan.joint
     ? [
         [
@@ -517,22 +651,18 @@ async function runDuplicates(
   ];
 }
 
-async function runCount(
-  plan: CountPlan,
-  ctx: CommandExecutionContext
-): Promise<ResultBlock[]> {
-  const res = await ctx.runReadOnlySql(plan.sql);
-  const n = asNumber(res.rows[0]?.n) ?? 0;
+function countBlocks(rows: Row[]): ResultBlock[] {
+  const n = asNumber(rows[0]?.n) ?? 0;
   return [{ kind: "text", text: String(n) }];
 }
 
-async function runList(
-  plan: ListPlan,
-  ctx: CommandExecutionContext
-): Promise<ResultBlock[]> {
-  const res = await ctx.runReadOnlySql(plan.sql);
-  const total = asNumber(res.rows[0]?.n_total) ?? res.rows.length;
-  const rows = res.rows.map((row: Row, i: number): CellValue[] => [
+function listBlocks(plan: ListPlan, resRows: Row[]): ResultBlock[] {
+  if (plan.by !== undefined && resRows.length === 0) {
+    // like Stata, a by group with no matching rows lists nothing
+    return [];
+  }
+  const total = asNumber(resRows[0]?.n_total) ?? resRows.length;
+  const rows = resRows.map((row: Row, i: number): CellValue[] => [
     i + 1,
     ...plan.variables.map((v): CellValue => {
       const val = row[v];
@@ -678,21 +808,26 @@ export async function executeCommand(
         ];
         return ok("browse", input, plan.sql, blocks);
       }
-      case "summarize":
-        return ok(
-          "summarize",
-          input,
-          plan.sql,
-          await runSummarize(plan, ctx)
+      case "summarize": {
+        const { blocks, sql } = await runMaybeBy(plan, ctx, (rows) =>
+          summarizeBlocks(plan, rows)
         );
+        return ok("summarize", input, sql, blocks);
+      }
       case "sumDetail": {
         const { blocks, sql } = await runSumDetail(plan, ctx);
         return ok("summarize", input, sql, blocks);
       }
-      case "tabulate":
-        return ok("tabulate", input, plan.sql, await runTabulate(plan, ctx));
-      case "correlate":
-        return ok("correlate", input, plan.sql, await runCorrelate(plan, ctx));
+      case "tabulate": {
+        const { blocks, sql } = await runMaybeBy(plan, ctx, (rows) =>
+          tabulateBlocks(plan, rows)
+        );
+        return ok("tabulate", input, sql, blocks);
+      }
+      case "correlate": {
+        const { blocks, sql } = await runCorrelate(plan, ctx);
+        return ok("correlate", input, sql, blocks);
+      }
       case "codebook": {
         const blocks = await runCodebook(plan, ctx);
         const sql = [
@@ -703,8 +838,12 @@ export async function executeCommand(
         ].join(";\n\n");
         return ok("codebook", input, sql, blocks);
       }
-      case "distinct":
-        return ok("distinct", input, plan.sql, await runDistinct(plan, ctx));
+      case "distinct": {
+        const { blocks, sql } = await runMaybeBy(plan, ctx, (rows) =>
+          distinctBlocks(plan, rows[0] ?? {})
+        );
+        return ok("distinct", input, sql, blocks);
+      }
       case "duplicates":
         return ok(
           "duplicates",
@@ -712,10 +851,16 @@ export async function executeCommand(
           plan.sql,
           await runDuplicates(plan, ctx)
         );
-      case "count":
-        return ok("count", input, plan.sql, await runCount(plan, ctx));
-      case "list":
-        return ok("list", input, plan.sql, await runList(plan, ctx));
+      case "count": {
+        const { blocks, sql } = await runMaybeBy(plan, ctx, countBlocks);
+        return ok("count", input, sql, blocks);
+      }
+      case "list": {
+        const { blocks, sql } = await runMaybeBy(plan, ctx, (rows) =>
+          listBlocks(plan, rows)
+        );
+        return ok("list", input, sql, blocks);
+      }
       case "describe":
         return ok(
           "describe",

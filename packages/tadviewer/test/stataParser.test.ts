@@ -466,3 +466,74 @@ describe("if expressions", () => {
     }
   });
 });
+
+describe("by prefix", () => {
+  test("by varlist: wraps the command", () => {
+    expect(parseCommand("by c: sum a")).toEqual({
+      kind: "summarize",
+      variables: [v("a", 10)],
+      detail: false,
+      by: { variables: [v("c", 3)], sortVariables: [] },
+    });
+  });
+
+  test("bysort abbreviations, sort variables, and the sort option", () => {
+    const forms = ["bys", "byso", "bysor", "bysort"];
+    for (const form of forms) {
+      expect(parseCommand(`${form} c: count`).by).toEqual({
+        variables: [v("c", form.length + 1)],
+        sortVariables: [],
+      });
+    }
+    expect(parseCommand("bysort c `has space` (a): list a").by).toEqual({
+      variables: [v("c", 7), v("has space", 9, true)],
+      sortVariables: [v("a", 22)],
+    });
+    expect(parseCommand("by c, sort: tab a").by).toEqual({
+      variables: [v("c", 3)],
+      sortVariables: [],
+    });
+  });
+
+  test("commands without a prefix carry no by", () => {
+    expect(parseCommand("sum a")).not.toHaveProperty("by");
+  });
+
+  test("keep if / drop if accept the prefix", () => {
+    expect(parseCommand("by c: keep if a > 1")).toMatchObject({
+      kind: "keep",
+      by: { variables: [v("c", 3)] },
+    });
+    expect(parseCommand("bys c: drop if a > 1").kind).toBe("drop");
+  });
+
+  const byErrors: Array<[string, string | RegExp]> = [
+    ["by: sum a", "by requires a varlist"],
+    ["bysort : sum a", "bysort requires a varlist"],
+    ["by c sum a", /expected ':'/],
+    ["by c:", "expected a command after ':'"],
+    ["by c (): list", "expected a variable name inside ( )"],
+    ["by c (a: list", "expected ')'"],
+    ["by c, rc0: count", "option 'rc0' not recognized; allowed: sort"],
+    ["by c: describe", "describe may not be combined with by"],
+    ["by c: codebook", "codebook may not be combined with by"],
+    ["by c: duplicates report", "duplicates may not be combined with by"],
+    ["by c: histogram a", "histogram may not be combined with by"],
+    ["by c: sort a", "sort may not be combined with by"],
+    ["by c: bro", "browse may not be combined with by"],
+    ["by c: keep a", "keep varlist may not be combined with by; use keep if"],
+    ["by c: by a: sum", "unknown command 'by'"],
+  ];
+  test.each(byErrors)("by error: %s", (input, msgPart) => {
+    expect(() => parseCommand(input)).toThrow(msgPart);
+  });
+
+  test("non-byable error points at the command name", () => {
+    try {
+      parseCommand("by c: describe");
+      fail("expected parse error");
+    } catch (e) {
+      expect((e as StataCommandError).pos).toBe(6);
+    }
+  });
+});

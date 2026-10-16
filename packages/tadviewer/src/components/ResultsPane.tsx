@@ -262,6 +262,13 @@ const ResultBlockView: React.FunctionComponent<{ block: ResultBlock }> = ({
       return <BlockTable block={block} />;
     case "text":
       return <div className="command-result-text">{block.text}</div>;
+    case "byGroup":
+      return (
+        <div className="command-result-bygroup" data-testid="by-group">
+          {"-> "}
+          {block.label}
+        </div>
+      );
     case "codebookVar":
       return <CodebookVarBlock block={block} />;
     case "sumDetail":

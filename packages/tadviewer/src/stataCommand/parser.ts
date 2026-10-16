@@ -3,6 +3,9 @@
  *
  * Grammar (deterministic, no backtracking):
  *
+ *   line    := byPrefix? command
+ *   byPrefix := BY varlist ( '(' varlist ')' )? ( ',' 'sort' )? ':'
+ *                                    -- only before byable commands
  *   command := browseCmd | summarizeCmd | tabulateCmd | correlateCmd
  *            | codebookCmd | distinctCmd | duplicatesCmd | describeCmd
  *            | dsCmd | listCmd | countCmd | orderCmd | sortCmd | gsortCmd
@@ -46,6 +49,7 @@
  * Precedence (tightest to loosest): parentheses, comparison, '&', '|'.
  *
  * Command names accepted (lowercase only, like Stata):
+ *   by prefix: by | bys | byso | bysor | bysort
  *   browse:    bro | brow | brows | browse
  *   summarize: sum | summ | ... | summarize
  *   tabulate:  tab | tabu | ... | tabulate
@@ -65,6 +69,12 @@
  *   histogram: hist | histo | ... | histogram
  *
  * Notes:
+ * - `by` and `bysort` are synonyms: groups are always formed in sorted
+ *   order, so Stata's "not sorted" error for plain `by` cannot arise.
+ *   Parenthesized variables (`bysort g (x):`) order observations within
+ *   each group and do not define groups. Only commands Stata accepts
+ *   under by are allowed (BYABLE_COMMANDS); `keep`/`drop` only in their
+ *   `if` form.
  * - `=` is accepted as a synonym for `==`, and `~=` for `!=`.
  * - `null` may only appear with `==`/`!=`.
  * - A bare `.` is Stata's numeric missing-value literal and maps to null:
@@ -85,8 +95,11 @@
  */
 
 import {
+  BYABLE_COMMANDS,
   CmpOp,
+  ParsedByPrefix,
   ParsedCommand,
+  ParsedCommandBody,
   ParsedExpr,
   ParsedOperand,
   SignedVarRef,
@@ -95,7 +108,7 @@ import {
 import { StataCommandError } from "./errors";
 import { lex, Token } from "./lexer";
 
-type CommandName = ParsedCommand["kind"];
+type CommandName = ParsedCommandBody["kind"];
 
 const COMMAND_FORMS: Array<{
   kind: CommandName;
@@ -212,9 +225,88 @@ class Parser {
   }
 
   parseCommand(): ParsedCommand {
+    const by = this.parseOptionalByPrefix();
+    const body = this.parseCommandBody(by);
+    return by === undefined ? body : { ...body, by };
+  }
+
+  /**
+   * Parse a `by varlist:` / `bysort varlist (sortvars):` /
+   * `by varlist, sort:` prefix, if the line starts with one.
+   */
+  private parseOptionalByPrefix(): ParsedByPrefix | undefined {
+    const tok = this.peek();
+    const isBy =
+      tok.type === "word" &&
+      (tok.text === "by" ||
+        (tok.text.length >= 3 && "bysort".startsWith(tok.text)));
+    if (!isBy) {
+      return undefined;
+    }
+    this.next();
+    const variables = this.parseNameList();
+    if (variables.length === 0) {
+      this.error(`${tok.text} requires a varlist, e.g. ${tok.text} group:`);
+    }
+    let sortVariables: VarRef[] = [];
+    const open = this.peek();
+    if (open.type === "op" && open.text === "(") {
+      this.next();
+      sortVariables = this.parseNameList();
+      if (sortVariables.length === 0) {
+        this.error("expected a variable name inside ( )");
+      }
+      const close = this.peek();
+      if (!(close.type === "op" && close.text === ")")) {
+        this.error("expected ')'", close.pos);
+      }
+      this.next();
+    }
+    const comma = this.peek();
+    if (comma.type === "op" && comma.text === ",") {
+      this.next();
+      const opt = this.peek();
+      if (!(opt.type === "word" && opt.text === "sort")) {
+        this.error(
+          `option '${opt.text}' not recognized; allowed: sort`,
+          opt.pos
+        );
+      }
+      this.next();
+    }
+    const colon = this.peek();
+    if (!(colon.type === "op" && colon.text === ":")) {
+      this.error(
+        `expected ':' after the ${tok.text} varlist, e.g. ${tok.text} group: sum x`,
+        colon.pos
+      );
+    }
+    this.next();
+    return { variables, sortVariables };
+  }
+
+  /** variable names up to the next operator or end of input */
+  private parseNameList(): VarRef[] {
+    const vars: VarRef[] = [];
+    for (;;) {
+      const tok = this.peek();
+      if (tok.type === "word" && tok.text !== "if") {
+        vars.push({ name: tok.text, quoted: false, pos: tok.pos });
+      } else if (tok.type === "quotedIdent") {
+        vars.push({ name: tok.text, quoted: true, pos: tok.pos });
+      } else {
+        return vars;
+      }
+      this.next();
+    }
+  }
+
+  private parseCommandBody(by: ParsedByPrefix | undefined): ParsedCommandBody {
     const first = this.peek();
     if (first.type === "eof") {
-      this.error("empty command");
+      this.error(
+        by === undefined ? "empty command" : "expected a command after ':'"
+      );
     }
     if (first.type !== "word") {
       this.error(
@@ -228,6 +320,9 @@ class Parser {
         `unknown command '${first.text}': expected one of bro[wse], sum[marize], tab[ulate], cor[relate], codebook, distinct, duplicates, des[cribe], ds, list, cou[nt], ord[er], so[rt], gsort, keep, drop, hist[ogram]`,
         first.pos
       );
+    }
+    if (by !== undefined && !BYABLE_COMMANDS.has(kind)) {
+      this.error(`${kind} may not be combined with by`, first.pos);
     }
     this.next();
 
@@ -382,6 +477,12 @@ class Parser {
           this.expectNoOptions(kind);
           this.expectEof();
           return { kind, variables: [], filter };
+        }
+        if (by !== undefined) {
+          this.error(
+            `${kind} varlist may not be combined with by; use ${kind} if`,
+            ifTok.pos
+          );
         }
         const variables = this.parseVarlist();
         if (variables.length === 0) {

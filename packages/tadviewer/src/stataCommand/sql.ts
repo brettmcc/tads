@@ -55,6 +55,14 @@
  * - describe: variable names and SQL types plus the observation count.
  * - histogram: frequency histogram of a numeric variable; default bin
  *   count is Stata's min(sqrt(N), 10*log10(N)).
+ *
+ * By prefix (summarize, tabulate, correlate, distinct, count, list): the
+ * plan carries a ByGroupsPlan listing the groups, and the command's own
+ * query computes every group at once (GROUP BY / PARTITION BY the by
+ * variables, with the group key selected as VARCHAR columns by_0, by_1,
+ * ...), so a by-prefixed command costs one scan rather than one per
+ * group. summarize, detail is the exception: its order statistics need
+ * each group's N, so phase 2 runs once per group and variable.
  */
 
 import {
@@ -70,7 +78,14 @@ import {
   SubExp,
   UnaryRelExp,
 } from "reltab";
-import { CmpOp, Expr, Literal, Operand, StataCommand } from "./ast";
+import {
+  ByPrefix,
+  CmpOp,
+  Expr,
+  Literal,
+  Operand,
+  StataCommand,
+} from "./ast";
 import { StataCommandError } from "./errors";
 
 export const TOP_VALUES_LIMIT = 10;
@@ -93,6 +108,12 @@ export const LIST_LIMIT = 200;
  * indicate truncation.
  */
 export const DUPLICATES_GROUP_LIMIT = 1000;
+
+/**
+ * Maximum number of groups a by-prefixed command reports. Groups beyond
+ * the limit (in sort order) are omitted; the executor reports the total.
+ */
+export const BY_GROUP_LIMIT = 500;
 
 /** percentiles reported by summarize, detail (Stata's set) */
 export const DETAIL_PERCENTILES = [1, 5, 10, 25, 50, 75, 90, 95, 99];
@@ -173,8 +194,24 @@ export interface BrowsePlan {
 /** how each summarize variable's statistics are computed and displayed */
 export type SummarizeVarKind = "numeric" | "date" | "other";
 
+/**
+ * The groups of a by-prefixed command. Like Stata, groups are formed over
+ * the session dataset, before the command's own `if`: a group whose
+ * observations all fail the `if` is still reported, with empty results.
+ */
+export interface ByGroupsPlan {
+  variables: string[];
+  /**
+   * the first BY_GROUP_LIMIT groups in sort order (ascending, missing
+   * last): key columns by_0, by_1, ... as VARCHAR, plus the total group
+   * count n_by_groups
+   */
+  groupsSql: string;
+}
+
 export interface SummarizePlan {
   kind: "summarize";
+  by?: ByGroupsPlan;
   variables: string[];
   /**
    * per-variable stat kind, parallel to `variables`: numeric stats,
@@ -187,22 +224,33 @@ export interface SummarizePlan {
 
 export interface SumDetailPlan {
   kind: "sumDetail";
+  by?: ByGroupsPlan;
   /** numeric variables only, in command order */
   variables: string[];
   /** non-numeric variables requested but omitted from the detail panels */
   skipped: string[];
-  /** phase 1: N and mean for every variable in one scan */
+  /**
+   * phase 1: N and mean for every variable in one scan (one row per
+   * group under a by prefix)
+   */
   phase1Sql: string;
   /**
    * phase 2 (per variable, given N and mean from phase 1): percentiles,
    * extremes, moments. Pure function of the plan; the executor invokes
-   * it once the counts are known.
+   * it once the counts are known. Under a by prefix, `groupKey` (the
+   * by_i values of a group) restricts it to that group.
    */
-  mkDetailSql(variable: string, n: number, mean: number): string;
+  mkDetailSql(
+    variable: string,
+    n: number,
+    mean: number,
+    groupKey?: Array<string | null>
+  ): string;
 }
 
 export interface TabulatePlan {
   kind: "tabulate";
+  by?: ByGroupsPlan;
   variable: string;
   missing: boolean;
   /** true when the tabulated column is numeric: values arrive un-cast so
@@ -213,6 +261,7 @@ export interface TabulatePlan {
 
 export interface CorrelatePlan {
   kind: "correlate";
+  by?: ByGroupsPlan;
   /** numeric variables only, in command order */
   variables: string[];
   /** non-numeric variables requested but omitted from the matrix */
@@ -244,6 +293,7 @@ export interface CodebookPlan {
 
 export interface DistinctPlan {
   kind: "distinct";
+  by?: ByGroupsPlan;
   variables: string[];
   missing: boolean;
   joint: boolean;
@@ -269,11 +319,13 @@ export interface DuplicatesPlan {
 
 export interface CountPlan {
   kind: "count";
+  by?: ByGroupsPlan;
   sql: string;
 }
 
 export interface ListPlan {
   kind: "list";
+  by?: ByGroupsPlan;
   variables: string[];
   sql: string;
 }
@@ -570,6 +622,103 @@ function viewSql(
   return query.toSql(ctx.dialect, mkTableMap(query, ctx.schema));
 }
 
+/**
+ * Comma-separated select list in the house layout: the first item after
+ * SELECT, the rest aligned beneath it.
+ */
+function selectList(cols: string[]): string[] {
+  return cols.map(
+    (c, i) =>
+      `${i === 0 ? "SELECT " : "       "}${c}${
+        i === cols.length - 1 ? "" : ","
+      }`
+  );
+}
+
+/* ------------------------------ by groups ----------------------------- */
+
+/** quoted by-variable columns, for GROUP BY / PARTITION BY / ORDER BY */
+function byTerms(by: ByPrefix, ctx: PlanContext): string {
+  return by.variables.map((c) => ctx.dialect.quoteCol(c)).join(", ");
+}
+
+/**
+ * Group key select items: each by variable as VARCHAR (by_0, by_1, ...).
+ * Text keys compare exactly between the group-list query and the
+ * command's grouped query, whatever the column type.
+ */
+function byKeyCols(by: ByPrefix, ctx: PlanContext): string[] {
+  return by.variables.map(
+    (c, i) => `CAST(${ctx.dialect.quoteCol(c)} AS VARCHAR) AS by_${i}`
+  );
+}
+
+/**
+ * GROUP BY / ORDER BY / LIMIT tail of a one-row-per-group aggregate.
+ * Limiting to the first BY_GROUP_LIMIT groups that have rows covers
+ * every listed group that has rows, since both queries sort the same way.
+ */
+function byAggregateTail(by: ByPrefix, ctx: PlanContext): string[] {
+  const terms = byTerms(by, ctx);
+  return [`GROUP BY ${terms}`, `ORDER BY ${terms}`, `LIMIT ${BY_GROUP_LIMIT}`];
+}
+
+/**
+ * QUALIFY term restricting a multi-row-per-group query to the first
+ * BY_GROUP_LIMIT groups.
+ */
+function byGroupLimitCondition(by: ByPrefix, ctx: PlanContext): string {
+  return `dense_rank() OVER (ORDER BY ${byTerms(by, ctx)}) <= ${BY_GROUP_LIMIT}`;
+}
+
+/**
+ * SQL condition selecting one group by its key (the by_i values returned
+ * by the group-list query).
+ */
+function byGroupCondition(
+  by: ByPrefix,
+  ctx: PlanContext,
+  groupKey: Array<string | null>
+): string {
+  return by.variables
+    .map((c, i) => {
+      const q = ctx.dialect.quoteCol(c);
+      const v = groupKey[i];
+      return v === null
+        ? `${q} IS NULL`
+        : `CAST(${q} AS VARCHAR) = ${sqlStringLiteral(v)}`;
+    })
+    .join(" AND ");
+}
+
+function planByGroups(by: ByPrefix, ctx: PlanContext): ByGroupsPlan {
+  const terms = byTerms(by, ctx);
+  const lines = [
+    ...selectList([...byKeyCols(by, ctx), "count(*) OVER () AS n_by_groups"]),
+    fromClause(ctx),
+  ];
+  // the session filter only: the command's `if` does not remove groups
+  const where = whereClause(undefined, ctx);
+  if (where !== "") {
+    lines.push(where);
+  }
+  lines.push(
+    `GROUP BY ${terms}`,
+    `ORDER BY ${terms}`,
+    `LIMIT ${BY_GROUP_LIMIT}`
+  );
+  return { variables: by.variables, groupsSql: lines.join("\n") };
+}
+
+/** attach the by-groups plan to a plan when the command has a by prefix */
+function withBy<P extends { kind: string; by?: ByGroupsPlan }>(
+  plan: P,
+  by: ByPrefix | undefined,
+  ctx: PlanContext
+): P {
+  return by === undefined ? plan : { ...plan, by: planByGroups(by, ctx) };
+}
+
 function planBrowse(
   cmd: StataCommand & { kind: "browse" },
   ctx: PlanContext
@@ -597,7 +746,7 @@ function planSummarize(
 ): SummarizePlan {
   const from = fromClause(ctx);
   const where = whereClause(cmd.filter, ctx);
-  const statCols: string[] = [];
+  const statCols: string[] = cmd.by ? byKeyCols(cmd.by, ctx) : [];
   const varKinds: SummarizeVarKind[] = [];
   cmd.variables.forEach((colId, idx) => {
     const q = ctx.dialect.quoteCol(colId);
@@ -635,22 +784,23 @@ function planSummarize(
       );
     }
   });
-  const lines = [
-    "SELECT " + statCols[0] + ",",
-    ...statCols
-      .slice(1)
-      .map((s, i) => `       ${s}${i === statCols.length - 2 ? "" : ","}`),
-    from,
-  ];
+  const lines = [...selectList(statCols), from];
   if (where !== "") {
     lines.push(where);
   }
-  return {
-    kind: "summarize",
-    variables: cmd.variables,
-    varKinds,
-    sql: lines.join("\n"),
-  };
+  if (cmd.by) {
+    lines.push(...byAggregateTail(cmd.by, ctx));
+  }
+  return withBy(
+    {
+      kind: "summarize",
+      variables: cmd.variables,
+      varKinds,
+      sql: lines.join("\n"),
+    },
+    cmd.by,
+    ctx
+  );
 }
 
 /**
@@ -720,26 +870,36 @@ function planSumDetail(
   const where = whereClause(cmd.filter, ctx);
   const dialect = ctx.dialect;
 
-  const phase1Cols = explicit.flatMap((colId, idx) => {
-    const q = dialect.quoteCol(colId);
-    return [
-      `count(${q}) AS n_${idx}`,
-      `CAST(avg(${q}) AS DOUBLE) AS mean_${idx}`,
-    ];
-  });
-  const phase1Lines = [
-    "SELECT " + phase1Cols[0] + ",",
-    ...phase1Cols
-      .slice(1)
-      .map((s, i) => `       ${s}${i === phase1Cols.length - 2 ? "" : ","}`),
-    from,
+  const by = cmd.by;
+  const phase1Cols = [
+    ...(by ? byKeyCols(by, ctx) : []),
+    ...explicit.flatMap((colId, idx) => {
+      const q = dialect.quoteCol(colId);
+      return [
+        `count(${q}) AS n_${idx}`,
+        `CAST(avg(${q}) AS DOUBLE) AS mean_${idx}`,
+      ];
+    }),
   ];
+  const phase1Lines = [...selectList(phase1Cols), from];
   if (where !== "") {
     phase1Lines.push(where);
   }
+  if (by) {
+    phase1Lines.push(...byAggregateTail(by, ctx));
+  }
 
-  const mkDetailSql = (variable: string, n: number, mean: number): string => {
+  const mkDetailSql = (
+    variable: string,
+    n: number,
+    mean: number,
+    groupKey?: Array<string | null>
+  ): string => {
     const q = dialect.quoteCol(variable);
+    const detailWhere =
+      by === undefined || groupKey === undefined
+        ? where
+        : whereClause(cmd.filter, ctx, byGroupCondition(by, ctx, groupKey));
     const meanLit = numberLiteral(mean);
     const cols: string[] = [];
     for (const p of DETAIL_PERCENTILES) {
@@ -767,26 +927,24 @@ function planSumDetail(
       `CAST(avg(pow(${q} - ${meanLit}, 3)) AS DOUBLE) AS m3`,
       `CAST(avg(pow(${q} - ${meanLit}, 4)) AS DOUBLE) AS m4`
     );
-    const lines = [
-      "SELECT " + cols[0] + ",",
-      ...cols
-        .slice(1)
-        .map((s, i) => `       ${s}${i === cols.length - 2 ? "" : ","}`),
-      from,
-    ];
-    if (where !== "") {
-      lines.push(where);
+    const lines = [...selectList(cols), from];
+    if (detailWhere !== "") {
+      lines.push(detailWhere);
     }
     return lines.join("\n");
   };
 
-  return {
-    kind: "sumDetail",
-    variables: explicit,
-    skipped,
-    phase1Sql: phase1Lines.join("\n"),
-    mkDetailSql,
-  };
+  return withBy(
+    {
+      kind: "sumDetail",
+      variables: explicit,
+      skipped,
+      phase1Sql: phase1Lines.join("\n"),
+      mkDetailSql,
+    },
+    by,
+    ctx
+  );
 }
 
 function planTabulate(
@@ -801,8 +959,46 @@ function planTabulate(
     ctx,
     cmd.missing ? undefined : `${q} IS NOT NULL`
   );
+  const value = `${numericValue ? q : `CAST(${q} AS VARCHAR)`} AS value`;
+  if (cmd.by) {
+    // every group's frequency table in one pass: the windows are
+    // partitioned by group, and each group keeps its own value limit
+    const terms = byTerms(cmd.by, ctx);
+    const part = `PARTITION BY ${terms}`;
+    const byLines = [
+      ...selectList([
+        ...byKeyCols(cmd.by, ctx),
+        value,
+        `count(*) AS freq`,
+        `100.0 * count(*) / sum(count(*)) OVER (${part}) AS percent`,
+        `100.0 * sum(count(*)) OVER (${part} ORDER BY ${q}) / sum(count(*)) OVER (${part}) AS cum_percent`,
+        `count(*) OVER (${part}) AS n_groups`,
+      ]),
+      from,
+    ];
+    if (where !== "") {
+      byLines.push(where);
+    }
+    byLines.push(
+      `GROUP BY ${terms}, ${q}`,
+      `QUALIFY ${byGroupLimitCondition(cmd.by, ctx)}`,
+      `    AND row_number() OVER (${part} ORDER BY ${q}) <= ${TAB_GROUP_LIMIT}`,
+      `ORDER BY ${terms}, ${q}`
+    );
+    return withBy(
+      {
+        kind: "tabulate",
+        variable: cmd.variable,
+        missing: cmd.missing,
+        numericValue,
+        sql: byLines.join("\n"),
+      },
+      cmd.by,
+      ctx
+    );
+  }
   const lines = [
-    `SELECT ${numericValue ? q : `CAST(${q} AS VARCHAR)`} AS value,`,
+    `SELECT ${value},`,
     `       count(*) AS freq,`,
     `       100.0 * count(*) / sum(count(*)) OVER () AS percent,`,
     `       100.0 * sum(count(*)) OVER (ORDER BY ${q}) / sum(count(*)) OVER () AS cum_percent,`,
@@ -851,7 +1047,7 @@ function planCorrelate(
     ctx,
     quoted.map((q) => `${q} IS NOT NULL`).join(" AND ")
   );
-  const cols = ["count(*) AS n"];
+  const cols = [...(cmd.by ? byKeyCols(cmd.by, ctx) : []), "count(*) AS n"];
   variables.forEach((_, i) => {
     for (let j = 0; j <= i; j++) {
       if (i === j) {
@@ -868,23 +1064,24 @@ function planCorrelate(
       }
     }
   });
-  const lines = [
-    "SELECT " + cols[0] + (cols.length > 1 ? "," : ""),
-    ...cols
-      .slice(1)
-      .map((s, i) => `       ${s}${i === cols.length - 2 ? "" : ","}`),
-    from,
-  ];
+  const lines = [...selectList(cols), from];
   if (where !== "") {
     lines.push(where);
   }
-  return {
-    kind: "correlate",
-    variables,
-    skipped,
-    covariance: cmd.covariance,
-    sql: lines.join("\n"),
-  };
+  if (cmd.by) {
+    lines.push(...byAggregateTail(cmd.by, ctx));
+  }
+  return withBy(
+    {
+      kind: "correlate",
+      variables,
+      skipped,
+      covariance: cmd.covariance,
+      sql: lines.join("\n"),
+    },
+    cmd.by,
+    ctx
+  );
 }
 
 /**
@@ -983,33 +1180,63 @@ function planDistinct(
       ctx,
       cmd.missing ? undefined : quoted.map((q) => `${q} IS NOT NULL`).join(" AND ")
     );
-    const innerLines = ["SELECT count(*) AS freq", from];
+    const by = cmd.by;
+    // under a by prefix the inner query carries each combination's group
+    // (as g_0, g_1, ...) so the outer query can count per group
+    const innerGroupCols = by
+      ? by.variables.map((c, i) => `${ctx.dialect.quoteCol(c)} AS g_${i}`)
+      : [];
+    const innerLines = [
+      ...selectList([...innerGroupCols, "count(*) AS freq"]),
+      from,
+    ];
     if (innerWhere !== "") {
       innerLines.push(innerWhere);
     }
-    innerLines.push(`GROUP BY ${quoted.join(", ")}`);
+    innerLines.push(
+      `GROUP BY ${[...(by ? [byTerms(by, ctx)] : []), ...quoted].join(", ")}`
+    );
     const inner = innerLines
       .join("\n")
       .split("\n")
       .map((line) => "  " + line)
       .join("\n");
-    return {
-      kind: "distinct",
-      variables: cmd.variables,
-      missing: cmd.missing,
-      joint: true,
-      sql: [
-        "SELECT CAST(coalesce(sum(freq), 0) AS BIGINT) AS total,",
-        "       count(*) AS n_distinct",
-        "FROM (",
-        inner,
-        ")",
-      ].join("\n"),
-    };
+    const outerGroups = by ? by.variables.map((_, i) => `g_${i}`) : [];
+    const lines = [
+      ...selectList([
+        ...outerGroups.map((g, i) => `CAST(${g} AS VARCHAR) AS by_${i}`),
+        "CAST(coalesce(sum(freq), 0) AS BIGINT) AS total",
+        "count(*) AS n_distinct",
+      ]),
+      "FROM (",
+      inner,
+      ")",
+    ];
+    if (by) {
+      const terms = outerGroups.join(", ");
+      lines.push(
+        `GROUP BY ${terms}`,
+        `ORDER BY ${terms}`,
+        `LIMIT ${BY_GROUP_LIMIT}`
+      );
+    }
+    return withBy(
+      {
+        kind: "distinct",
+        variables: cmd.variables,
+        missing: cmd.missing,
+        joint: true,
+        sql: lines.join("\n"),
+      },
+      by,
+      ctx
+    );
   }
 
   const where = whereClause(cmd.filter, ctx);
-  const statCols = quoted.flatMap((q, idx) =>
+  const statCols = [
+    ...(cmd.by ? byKeyCols(cmd.by, ctx) : []),
+    ...quoted.flatMap((q, idx) =>
     cmd.missing
       ? [
           `count(*) AS total_${idx}`,
@@ -1019,24 +1246,26 @@ function planDistinct(
           `count(${q}) AS total_${idx}`,
           `count(DISTINCT ${q}) AS distinct_${idx}`,
         ]
-  );
-  const lines = [
-    "SELECT " + statCols[0] + ",",
-    ...statCols
-      .slice(1)
-      .map((s, i) => `       ${s}${i === statCols.length - 2 ? "" : ","}`),
-    from,
+    ),
   ];
+  const lines = [...selectList(statCols), from];
   if (where !== "") {
     lines.push(where);
   }
-  return {
-    kind: "distinct",
-    variables: cmd.variables,
-    missing: cmd.missing,
-    joint: false,
-    sql: lines.join("\n"),
-  };
+  if (cmd.by) {
+    lines.push(...byAggregateTail(cmd.by, ctx));
+  }
+  return withBy(
+    {
+      kind: "distinct",
+      variables: cmd.variables,
+      missing: cmd.missing,
+      joint: false,
+      sql: lines.join("\n"),
+    },
+    cmd.by,
+    ctx
+  );
 }
 
 /**
@@ -1087,12 +1316,21 @@ function planCount(
   cmd: StataCommand & { kind: "count" },
   ctx: PlanContext
 ): CountPlan {
-  const lines = [`SELECT count(*) AS n`, fromClause(ctx)];
+  const lines = [
+    ...selectList([
+      ...(cmd.by ? byKeyCols(cmd.by, ctx) : []),
+      "count(*) AS n",
+    ]),
+    fromClause(ctx),
+  ];
   const where = whereClause(cmd.filter, ctx);
   if (where !== "") {
     lines.push(where);
   }
-  return { kind: "count", sql: lines.join("\n") };
+  if (cmd.by) {
+    lines.push(...byAggregateTail(cmd.by, ctx));
+  }
+  return withBy({ kind: "count", sql: lines.join("\n") }, cmd.by, ctx);
 }
 
 function planList(
@@ -1100,15 +1338,6 @@ function planList(
   ctx: PlanContext
 ): ListPlan {
   const cols = cmd.variables.map((c) => ctx.dialect.quoteCol(c));
-  const lines = [
-    `SELECT ${cols.join(", ")},`,
-    `       count(*) OVER () AS n_total`,
-    fromClause(ctx),
-  ];
-  const where = whereClause(cmd.filter, ctx);
-  if (where !== "") {
-    lines.push(where);
-  }
   // Without an ORDER BY, DuckDB's parallel scan can return a different
   // subset/order of rows on each run. Respect the grid's current sort,
   // falling back to the listed columns themselves for a deterministic
@@ -1120,6 +1349,46 @@ function planList(
           ([c, asc]) => `${ctx.dialect.quoteCol(c)}${asc ? "" : " DESC"}`
         )
       : cols;
+  const where = whereClause(cmd.filter, ctx);
+  if (cmd.by) {
+    // each group lists its own first LIST_LIMIT rows, ordered by the
+    // parenthesized bysort variables ahead of the usual order
+    const terms = byTerms(cmd.by, ctx);
+    const part = `PARTITION BY ${terms}`;
+    const withinGroup = [
+      ...cmd.by.sortVariables.map((c) => ctx.dialect.quoteCol(c)),
+      ...orderTerms,
+    ].join(", ");
+    const byLines = [
+      ...selectList([
+        ...byKeyCols(cmd.by, ctx),
+        cols.join(", "),
+        `count(*) OVER (${part}) AS n_total`,
+      ]),
+      fromClause(ctx),
+    ];
+    if (where !== "") {
+      byLines.push(where);
+    }
+    byLines.push(
+      `QUALIFY ${byGroupLimitCondition(cmd.by, ctx)}`,
+      `    AND row_number() OVER (${part} ORDER BY ${withinGroup}) <= ${LIST_LIMIT}`,
+      `ORDER BY ${terms}, ${withinGroup}`
+    );
+    return withBy(
+      { kind: "list", variables: cmd.variables, sql: byLines.join("\n") },
+      cmd.by,
+      ctx
+    );
+  }
+  const lines = [
+    `SELECT ${cols.join(", ")},`,
+    `       count(*) OVER () AS n_total`,
+    fromClause(ctx),
+  ];
+  if (where !== "") {
+    lines.push(where);
+  }
   lines.push(`ORDER BY ${orderTerms.join(", ")}`);
   lines.push(`LIMIT ${LIST_LIMIT}`);
   return { kind: "list", variables: cmd.variables, sql: lines.join("\n") };

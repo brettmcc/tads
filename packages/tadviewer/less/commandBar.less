@@ -299,6 +299,17 @@
   margin: 2px 0;
 }
 
+/* Stata's "-> foreign = 1" by-group header, set off by a rule like
+   Stata's dashed separator */
+.command-result-bygroup {
+  margin: 10px 0 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--tad-grid-line);
+  font-family: var(--tad-mono-font);
+  font-weight: 700;
+  color: var(--tad-sel-fg);
+}
+
 /* clean, set-in-type result tables: no outer frame, a strong rule
    under the header, hairline row rules, aligned figures */
 .command-result-table {

@@ -5,6 +5,8 @@ export { parseCommand } from "./parser";
 export { resolveCommand, resolveExpr, resolveVar } from "./resolve";
 export {
   baseQuerySql,
+  BY_GROUP_LIMIT,
+  ByGroupsPlan,
   BrowsePlan,
   CodebookPlan,
   CodebookVarPlan,

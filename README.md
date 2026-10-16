@@ -103,6 +103,11 @@ Options may be abbreviated where unambiguous (`sum, d`, `corr x y, cov`,
 spelled in full, though the `duplicates` subcommand may be abbreviated
 (`duplicates r`).
 
+`summarize`, `tabulate`, `correlate`, `distinct`, `list`, and `count`
+also run once per group under a `by`/`bysort` prefix, as in Stata:
+`bysort region: sum price`, `by year month: tab status`. `keep if` and
+`drop if` accept the prefix too.
+
 `if` expressions support `==`/`!=`/`<`/`<=`/`>`/`>=` (with `=` and `~=`
 as synonyms), `&`, `|`, parentheses, string/number/date literals, and
 Stata missing-value syntax: `x == .` / `x != .` / `x < .` (non-missing)
@@ -115,8 +120,9 @@ language reference, session semantics, and safety guarantees.
 ## Accuracy
 
 Results from `summarize` (with and without `detail`), `tabulate`,
-`correlate`, `distinct`, `duplicates report`, and `count` are tested
-against Stata/MP 19 output on the same data.
+`correlate`, `distinct`, `duplicates report`, and `count` — including
+their `by`-prefixed forms — are tested against Stata/MP 19 output on the
+same data.
 
 ## Credits
 

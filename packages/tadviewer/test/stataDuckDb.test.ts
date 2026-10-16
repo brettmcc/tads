@@ -18,6 +18,7 @@ import {
   CommandExecutionContext,
   executeCommand,
   GridUpdate,
+  ResultBlock,
 } from "../src/stataCommand/executor";
 import stataReference from "./fixtures/stataCrossValidation.json";
 
@@ -1140,5 +1141,280 @@ describe("error outcomes", () => {
     expect(outcome.status).toBe("error");
     if (outcome.status !== "error") return;
     expect(outcome.error).toContain("unknown variable 'nope'");
+  });
+});
+
+/** split by-prefixed output into its groups: header label + blocks */
+function splitByGroups(
+  blocks: ResultBlock[]
+): Array<{ label: string; blocks: ResultBlock[] }> {
+  const groups: Array<{ label: string; blocks: ResultBlock[] }> = [];
+  for (const block of blocks) {
+    if (block.kind === "byGroup") {
+      groups.push({ label: block.label, blocks: [] });
+    } else {
+      expect(groups.length).toBeGreaterThan(0);
+      groups[groups.length - 1].blocks.push(block);
+    }
+  }
+  return groups;
+}
+
+async function runByGroups(command: string) {
+  const outcome = await executeCommand(command, ctx);
+  if (outcome.status !== "ok") {
+    throw new Error(`${command} failed: ${outcome.error}`);
+  }
+  return { outcome, groups: splitByGroups(outcome.blocks) };
+}
+
+function tableOf(block: ResultBlock | undefined) {
+  if (block === undefined || block.kind !== "table") {
+    throw new Error(`expected a table block, got ${block?.kind}`);
+  }
+  return block;
+}
+
+describe("by prefix", () => {
+  test("one grouped query plus the group list, not a query per group", async () => {
+    const { outcome, groups } = await runByGroups("by c: sum a");
+    expect(groups.map((g) => g.label)).toEqual([
+      "c = 1",
+      "c = 2",
+      "c = 3",
+      "c = 5",
+    ]);
+    const statements = outcome.sql.split(";\n\n");
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toContain("n_by_groups");
+    expect(statements[1]).toContain('GROUP BY "c"');
+  });
+
+  test("missing group values sort last and display as '.'", async () => {
+    const { groups } = await runByGroups("by s: count");
+    expect(groups.map((g) => g.label)).toEqual([
+      "s = alpha",
+      "s = gamma",
+      "s = it's",
+      's = say "hi"',
+      "s = .",
+    ]);
+    expect(groups[0].blocks).toEqual([{ kind: "text", text: "2" }]);
+  });
+
+  test("several by variables label each combination", async () => {
+    const { groups } = await runByGroups("bysort select c: count");
+    expect(groups.map((g) => g.label)).toEqual([
+      "select = x, c = 1",
+      "select = x, c = 2",
+      "select = y, c = 3",
+      "select = y, c = 5",
+      "select = z, c = 5",
+    ]);
+  });
+
+  test("date by variables", async () => {
+    const { groups } = await runByGroups("by d: count");
+    expect(groups[0].label).toBe("d = 2026-01-01");
+    expect(groups[groups.length - 1].label).toBe("d = .");
+  });
+
+  test("the session filter removes groups; the if clause does not", async () => {
+    await executeCommand("keep if c > 1", ctx);
+    ctx.sessionFilter = lastGrid!.sessionFilter as Expr;
+    const { groups } = await runByGroups("by c: count if a > 3");
+    expect(groups.map((g) => g.label)).toEqual(["c = 2", "c = 3", "c = 5"]);
+    expect(groups.map((g) => g.blocks)).toEqual([
+      [{ kind: "text", text: "0" }],
+      [{ kind: "text", text: "1" }],
+      [{ kind: "text", text: "1" }],
+    ]);
+  });
+
+  test("tabulate percentages are within each group", async () => {
+    const { groups } = await runByGroups("by c: tab a");
+    const c3 = tableOf(groups[2].blocks[0]);
+    expect(c3.rows).toEqual([
+      [3, 1, "50.00", "50.00"],
+      [4, 1, "50.00", "100.00"],
+    ]);
+    // c = 5 has a = 6 and a missing a, excluded without `missing`
+    expect(tableOf(groups[3].blocks[0]).rows).toEqual([
+      [6, 1, "100.00", "100.00"],
+    ]);
+  });
+
+  test("correlate deletes casewise within each group", async () => {
+    const { groups } = await runByGroups("by select: corr a b");
+    expect(groups.map((g) => g.label)).toEqual([
+      "select = x",
+      "select = y",
+      "select = z",
+    ]);
+    expect(groups[0].blocks[0]).toEqual({ kind: "text", text: "(obs=2)" });
+    expect(tableOf(groups[0].blocks[1]).rows[1]).toEqual([
+      "b",
+      "1.0000",
+      "1.0000",
+    ]);
+    expect(groups[1].blocks[0]).toEqual({ kind: "text", text: "(obs=1)" });
+  });
+
+  test("correlate's omitted-variable note precedes the groups", async () => {
+    const outcome = await executeCommand("by select: corr a s", ctx);
+    if (outcome.status !== "ok") throw new Error(outcome.error);
+    expect(outcome.blocks[0]).toEqual({
+      kind: "text",
+      text: "note: omitted non-numeric variable(s): s",
+    });
+    expect(outcome.blocks[1].kind).toBe("byGroup");
+  });
+
+  test("list numbers rows within each group; empty groups list nothing", async () => {
+    const { groups } = await runByGroups("by select: list a if a > 3");
+    expect(groups.map((g) => g.label)).toEqual([
+      "select = x",
+      "select = y",
+      "select = z",
+    ]);
+    expect(groups[0].blocks).toEqual([]);
+    expect(tableOf(groups[1].blocks[0]).rows).toEqual([[1, 4]]);
+    expect(tableOf(groups[2].blocks[0]).rows).toEqual([[1, 6]]);
+  });
+
+  test("bysort's parenthesized variables order rows within groups", async () => {
+    const plain = await runByGroups("by select: list a");
+    expect(tableOf(plain.groups[1].blocks[0]).rows.map((r) => r[1])).toEqual([
+      3,
+      4,
+      ".",
+    ]);
+    // y group ordered by b (4.5, 5.5, missing last)
+    const sorted = await runByGroups("bysort select (b): list a");
+    expect(tableOf(sorted.groups[1].blocks[0]).rows.map((r) => r[1])).toEqual(
+      [4, ".", 3]
+    );
+  });
+
+  test("summarize, detail runs phase 2 per group and records one group's SQL", async () => {
+    const { outcome, groups } = await runByGroups("by select: sum a b, detail");
+    expect(groups).toHaveLength(3);
+    const [aPanel, bPanel] = groups[0].blocks;
+    if (aPanel.kind !== "sumDetail" || bPanel.kind !== "sumDetail") {
+      throw new Error("expected detail panels");
+    }
+    expect([aPanel.variable, aPanel.n, aPanel.mean]).toEqual(["a", 2, 1.5]);
+    expect([bPanel.variable, bPanel.n, bPanel.mean]).toEqual(["b", 2, 2]);
+    expect(outcome.sql).toContain(
+      "the detail queries above repeat for each of the 3 groups"
+    );
+    expect(outcome.sql).toContain(`CAST("select" AS VARCHAR) = 'x'`);
+  });
+
+  test("distinct per variable and summarize of an emptied group", async () => {
+    const dist = await runByGroups("by select: distinct a s");
+    expect(tableOf(dist.groups[1].blocks[0]).rows).toEqual([
+      ["a", 2, 2],
+      ["s", 2, 2],
+    ]);
+    const sum = await runByGroups("by select: sum a if a > 5");
+    expect(tableOf(sum.groups[0].blocks[0]).rows).toEqual([
+      ["a", 0, null, null, null, null],
+    ]);
+  });
+
+  test("by: keep if behaves like keep if", async () => {
+    const outcome = await executeCommand("by c: keep if a > 1", ctx);
+    expect(outcome.status).toBe("ok");
+    expect(lastGrid!.sessionFilter).toEqual({
+      kind: "cmp",
+      op: ">",
+      lhs: { kind: "var", name: "a" },
+      rhs: { kind: "number", value: 1 },
+    });
+  });
+
+  test("non-byable commands are rejected", async () => {
+    const outcome = await executeCommand("by c: describe", ctx);
+    expect(outcome.status).toBe("error");
+    if (outcome.status !== "error") return;
+    expect(outcome.error).toContain("describe may not be combined with by");
+  });
+
+  test("matches Stata 19 by-group results", async () => {
+    const ref = stataReference.byPrefix;
+    type Group = keyof typeof ref.summarize;
+    const labels = ref.groups.map((g) => `${ref.by} = ${g}`);
+
+    const sum = await runByGroups("by c: sum a");
+    expect(sum.groups.map((g) => g.label)).toEqual(labels);
+    ref.groups.forEach((g, i) => {
+      const expected = ref.summarize[g as Group];
+      const row = tableOf(sum.groups[i].blocks[0]).rows[0];
+      expect(row[1]).toBe(expected.n);
+      expect(row[2]).toBeCloseTo(expected.mean, 12);
+      if (expected.sd === null) {
+        expect(row[3]).toBeNull();
+      } else {
+        expect(row[3]).toBeCloseTo(expected.sd, 12);
+      }
+      expect(row[4]).toBe(expected.min);
+      expect(row[5]).toBe(expected.max);
+    });
+
+    const sumIf = await runByGroups(ref.summarizeIf.command);
+    expect(sumIf.groups.map((g) => g.label)).toEqual(labels);
+    expect(sumIf.groups.map((g) => tableOf(g.blocks[0]).rows[0][1])).toEqual(
+      ref.groups.map((g) => ref.summarizeIf.n[g as Group])
+    );
+
+    const detail = await runByGroups("by c: sum a, detail");
+    ref.groups.forEach((g, i) => {
+      const expected = ref.summarizeDetail[g as Group];
+      const panel = detail.groups[i].blocks[0];
+      if (panel.kind !== "sumDetail") throw new Error("expected detail");
+      expect(panel.n).toBe(expected.n);
+      const pct = new Map(
+        panel.percentiles.map(({ p, value }) => [String(p), value])
+      );
+      for (const [p, value] of Object.entries(expected.percentiles)) {
+        expect(pct.get(p)).toBeCloseTo(value, 12);
+      }
+    });
+
+    const count = await runByGroups(ref.countIf.command);
+    expect(count.groups.map((g) => g.blocks[0])).toEqual(
+      ref.groups.map((g) => ({
+        kind: "text",
+        text: String(ref.countIf.n[g as Group]),
+      }))
+    );
+
+    for (const key of ["distinctMissing", "distinctJoint"] as const) {
+      const dist = await runByGroups(ref[key].command);
+      expect(
+        dist.groups.map((g) => tableOf(g.blocks[0]).rows[0].slice(1))
+      ).toEqual(
+        ref.groups.map((g) => {
+          const e = ref[key].groups[g as Group];
+          return [e.total, e.distinct];
+        })
+      );
+    }
+
+    const tab = await runByGroups(ref.tabulateMissing.command);
+    expect(
+      tab.groups.map((g) =>
+        tableOf(g.blocks[0]).rows.map((r) => ({
+          value: String(r[0]),
+          freq: r[1],
+        }))
+      )
+    ).toEqual(ref.groups.map((g) => ref.tabulateMissing.groups[g as Group]));
+
+    const countByA = await runByGroups(ref.countByA.command);
+    expect(countByA.groups.map((g) => g.label)).toEqual(
+      ref.countByA.groups.map((g) => `a = ${g}`)
+    );
   });
 });

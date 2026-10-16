@@ -20,12 +20,14 @@
  */
 
 import {
+  ByPrefix,
   Expr,
   Operand,
   ParsedCommand,
   ParsedExpr,
   ParsedOperand,
   StataCommand,
+  StataCommandBody,
   VarRef,
 } from "./ast";
 import { StataCommandError } from "./errors";
@@ -177,6 +179,21 @@ export function resolveCommand(
   cmd: ParsedCommand,
   columns: string[]
 ): StataCommand {
+  const body = resolveCommandBody(cmd, columns);
+  if (cmd.by === undefined) {
+    return body;
+  }
+  const by: ByPrefix = {
+    variables: resolveVarlist(cmd.by.variables, columns, false),
+    sortVariables: resolveVarlist(cmd.by.sortVariables, columns, false),
+  };
+  return { ...body, by };
+}
+
+function resolveCommandBody(
+  cmd: ParsedCommand,
+  columns: string[]
+): StataCommandBody {
   switch (cmd.kind) {
     case "browse":
     case "list": {

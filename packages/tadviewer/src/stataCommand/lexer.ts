@@ -11,7 +11,7 @@
  *            by the parser)
  * - STRING:  '...' or "..." with the quote character doubled to escape it
  *            ('it''s', "say ""hi""")
- * - OP:      ( ) & | == = != ~= <= >= < > , + - .
+ * - OP:      ( ) & | == = != ~= <= >= < > , + - . :
  *            (a bare '.' is Stata's numeric missing-value literal; a dot
  *            followed by a digit still starts a NUMBER)
  */
@@ -171,7 +171,7 @@ export function lex(input: string): Token[] {
       i += 2;
       continue;
     }
-    if ("()&|<>=-,+.".includes(ch)) {
+    if ("()&|<>=-,+.:".includes(ch)) {
       tokens.push({ type: "op", text: ch, pos: i });
       i++;
       continue;

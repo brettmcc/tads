@@ -1,7 +1,7 @@
 {
   "provenance": {
     "generatedBy": "Stata/MP 19.0",
-    "generatedOn": "2026-08-07",
+    "generatedOn": "2026-10-16",
     "doFile": "stataCrossValidation.do"
   },
   "summarize": {
@@ -126,5 +126,98 @@
   "count": {
     "all": 6,
     "cGreaterThan2": 4
+  },
+  "byPrefix": {
+    "by": "c",
+    "groups": ["1", "2", "3", "5"],
+    "summarize": {
+      "1": { "n": 1, "mean": 1, "sd": null, "min": 1, "max": 1 },
+      "2": { "n": 1, "mean": 2, "sd": null, "min": 2, "max": 2 },
+      "3": { "n": 2, "mean": 3.5, "sd": 0.7071067811865476, "min": 3, "max": 4 },
+      "5": { "n": 1, "mean": 6, "sd": null, "min": 6, "max": 6 }
+    },
+    "summarizeIf": {
+      "command": "by c: summarize a if a >= 3",
+      "n": { "1": 0, "2": 0, "3": 2, "5": 1 }
+    },
+    "summarizeDetail": {
+      "1": {
+        "n": 1,
+        "percentiles": {
+          "25": 1,
+          "50": 1,
+          "75": 1
+        }
+      },
+      "2": {
+        "n": 1,
+        "percentiles": {
+          "25": 2,
+          "50": 2,
+          "75": 2
+        }
+      },
+      "3": {
+        "n": 2,
+        "percentiles": {
+          "25": 3,
+          "50": 3.5,
+          "75": 4
+        }
+      },
+      "5": {
+        "n": 1,
+        "percentiles": {
+          "25": 6,
+          "50": 6,
+          "75": 6
+        }
+      }
+    },
+    "countIf": {
+      "command": "by c: count if b < 5",
+      "n": { "1": 1, "2": 1, "3": 1, "5": 0 }
+    },
+    "distinctMissing": {
+      "command": "by c: distinct a, missing",
+      "groups": {
+        "1": { "total": 1, "distinct": 1 },
+        "2": { "total": 1, "distinct": 1 },
+        "3": { "total": 2, "distinct": 2 },
+        "5": { "total": 2, "distinct": 2 }
+      }
+    },
+    "distinctJoint": {
+      "command": "by c: distinct a b, joint",
+      "groups": {
+        "1": { "total": 1, "distinct": 1 },
+        "2": { "total": 1, "distinct": 1 },
+        "3": { "total": 1, "distinct": 1 },
+        "5": { "total": 1, "distinct": 1 }
+      }
+    },
+    "tabulateMissing": {
+      "command": "by c: tabulate a, missing",
+      "groups": {
+        "1": [
+          { "value": "1", "freq": 1 }
+        ],
+        "2": [
+          { "value": "2", "freq": 1 }
+        ],
+        "3": [
+          { "value": "3", "freq": 1 },
+          { "value": "4", "freq": 1 }
+        ],
+        "5": [
+          { "value": "6", "freq": 1 },
+          { "value": ".", "freq": 1 }
+        ]
+      }
+    },
+    "countByA": {
+      "command": "bysort a: count",
+      "groups": ["1", "2", "3", "4", "6", "."]
+    }
   }
 }

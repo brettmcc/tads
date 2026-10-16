@@ -142,5 +142,54 @@ file write results "count,,N," %24.17g (r(N)) _n
 count if c > 2
 file write results "count_if,,N," %24.17g (r(N)) _n
 
+* by prefix. The by-prefixed commands run for the log (group order, the
+* "-> c = 3" headers, and groups that the if clause empties still being
+* shown); r() after by holds only the last group, so the per-group values
+* are captured by looping over the groups. Kept last: bysort re-sorts.
+bysort c: summarize a
+bysort c: summarize a if a >= 3
+bysort c: summarize a, detail
+bysort c: tabulate a, missing
+bysort c: count if b < 5
+bysort c: distinct a, missing
+bysort c: distinct a b, joint
+bysort a: count
+
+levelsof c, local(groups)
+foreach g of local groups {
+    summarize a if c == `g'
+    file write results "by_summarize,c_`g',N,"    %24.17g (r(N))    _n
+    file write results "by_summarize,c_`g',mean," %24.17g (r(mean)) _n
+    file write results "by_summarize,c_`g',sd,"   %24.17g (r(sd))   _n
+    file write results "by_summarize,c_`g',min,"  %24.17g (r(min))  _n
+    file write results "by_summarize,c_`g',max,"  %24.17g (r(max))  _n
+
+    summarize a if c == `g' & a >= 3
+    file write results "by_summarize_if,c_`g',N," %24.17g (r(N)) _n
+
+    summarize a if c == `g', detail
+    file write results "by_summarize_detail,c_`g',N,"   %24.17g (r(N))   _n
+    file write results "by_summarize_detail,c_`g',p25," %24.17g (r(p25)) _n
+    file write results "by_summarize_detail,c_`g',p50," %24.17g (r(p50)) _n
+    file write results "by_summarize_detail,c_`g',p75," %24.17g (r(p75)) _n
+
+    count if c == `g' & b < 5
+    file write results "by_count_if,c_`g',N," %24.17g (r(N)) _n
+
+    distinct a if c == `g', missing
+    file write results "by_distinct_missing,c_`g',total,"     %24.17g (r(N))         _n
+    file write results "by_distinct_missing,c_`g',ndistinct," %24.17g (r(ndistinct)) _n
+
+    distinct a b if c == `g', joint
+    file write results "by_distinct_joint,c_`g',total,"     %24.17g (r(N))         _n
+    file write results "by_distinct_joint,c_`g',ndistinct," %24.17g (r(ndistinct)) _n
+
+    tabulate a if c == `g', missing matcell(frequencies) matrow(values)
+    forvalues i = 1/`=r(r)' {
+        file write results "by_tabulate_missing,c_`g',value_" ///
+            %9.0g (values[`i', 1]) "," %24.17g (frequencies[`i', 1]) _n
+    }
+}
+
 file close results
 log close

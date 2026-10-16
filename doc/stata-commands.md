@@ -47,6 +47,9 @@ their text in the input for correction.
 | `drop` | `drop varlist` or `drop if expr` | Drop visible variables, or accumulate the inverse of a row filter. |
 | `histogram` | `hist[ogram] var [if expr] [, bin(#)]` | Render a frequency histogram for a numeric variable. |
 
+`summarize`, `tabulate`, `correlate`, `distinct`, `list`, and `count` also
+take a `by varlist:` / `bysort varlist:` prefix; see [By groups](#by-groups).
+
 Options may be abbreviated where unambiguous: `sum, d`, `tab x, m`,
 `corr x y, cov`, `distinct x, j`, and `hist x, bin(20)` are valid.
 `codebook`, `distinct`, and `duplicates` must be spelled in full, though the
@@ -56,6 +59,47 @@ subcommands are rejected with a message.
 
 An omitted varlist means all currently visible variables for commands that
 permit it. `tabulate` and `histogram` take exactly one variable.
+
+## By groups
+
+`summarize`, `tabulate`, `correlate`, `distinct`, `list`, and `count` accept
+Stata's `by` prefix and repeat their output for each group, introduced by a
+`-> var = value` header:
+
+```text
+bysort region: sum price mpg
+by year month: tab status, missing
+bys firm (date): list date price if price > 100
+by group, sort: distinct id, joint
+```
+
+- `by`, `bys[ort]`, and `by varlist, sort:` are interchangeable. Groups are
+  always formed in sorted order, so Stata's "not sorted" error for a plain
+  `by` cannot arise.
+- Groups are listed in ascending order of the by variables, missing last
+  (shown as `.`). Several by variables group on each combination:
+  `-> foreign = 0, rep78 = 3`.
+- As in Stata, groups come from the session dataset (after `keep if` /
+  `drop if`), not from the command's own `if`: a group whose observations
+  all fail the `if` is still shown, with N = 0 (or, for `list`, nothing).
+- Variables in parentheses (`bysort g (x):`) only order observations within
+  each group; they matter for `list`.
+- `keep if` and `drop if` accept the prefix, with the same effect as
+  without it (there is no `_n`/`_N` to make the result depend on the group).
+- Other commands, and `keep`/`drop` with a varlist, are rejected with
+  Stata's "may not be combined with by" message.
+- At most 500 groups are reported (the first in sort order); a note gives
+  the total. `list` shows up to 200 rows per group and numbers them within
+  the group.
+
+Each command still costs one scan of the data however many groups there are:
+the statistics for every group come from a single grouped query (plus a
+query listing the groups, which reads only the by variables). `summarize, detail` is the exception — its
+percentiles need each group's N, so the percentile query runs once per group.
+
+By-group results for `summarize` (with and without `detail`), `tabulate`,
+`distinct`, and `count`, including the group order and the groups an `if`
+empties, are cross-validated against Stata 19.
 
 ## Session behavior
 
@@ -169,6 +213,7 @@ Examples:
 bro make price mpg if mpg > 20
 sum price weight if foreign == 1
 sum price*, detail
+bysort foreign: sum price mpg
 tab rep78, missing
 correlate price weight mpg if foreign == 0
 corr price mpg, covariance
