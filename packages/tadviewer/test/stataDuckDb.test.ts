@@ -1340,7 +1340,9 @@ describe("by prefix", () => {
     const outcome = await executeCommand("by c: keep if a > 1", ctx);
     expect(outcome.status).toBe("error");
     if (outcome.status !== "error") return;
-    expect(outcome.error).toContain("the prefix has no effect");
+    expect(outcome.error).toContain(
+      "keep may not be combined with by; use keep if without it"
+    );
     expect(lastGrid).toBeNull();
   });
 

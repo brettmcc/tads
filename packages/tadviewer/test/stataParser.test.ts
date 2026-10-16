@@ -516,7 +516,7 @@ describe("by prefix", () => {
     ["by c: keep a", "keep may not be combined with by"],
     [
       "by c: keep if a > 1",
-      "keep may not be combined with by: without _n/_N the prefix has no effect; use keep if without it",
+      "keep may not be combined with by; use keep if without it",
     ],
     ["bys c: drop if a > 1", "drop may not be combined with by"],
     ["by c: by a: sum", "unknown command 'by'"],

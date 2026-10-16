@@ -324,7 +324,7 @@ class Parser {
     }
     if (by !== undefined && (kind === "keep" || kind === "drop")) {
       this.error(
-        `${kind} may not be combined with by: without _n/_N the prefix has no effect; use ${kind} if without it`,
+        `${kind} may not be combined with by; use ${kind} if without it`,
         first.pos
       );
     }
