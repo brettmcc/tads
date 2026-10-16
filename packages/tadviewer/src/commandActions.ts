@@ -11,6 +11,7 @@ import {
   CommandResultEntry,
   datasetKey,
   entryAutoOpensPane,
+  entryInDataset,
   mkResultEntry,
 } from "./commandState";
 import {
@@ -177,14 +178,34 @@ export function setResultsPaneOpen(
   update(stateRef, (st) => st.set("resultsPaneOpen", open) as AppState);
 }
 
-/** clear the results log (independent of pane visibility) */
+/** key of the dataset being viewed; "" when none is open */
+export function currentDatasetKey(appState: AppState): string {
+  return appState.viewState ? datasetKey(appState.viewState.dsPath) : "";
+}
+
+/**
+ * The results log is kept per dataset: only entries run against the
+ * dataset being viewed are shown (and recalled by command history).
+ */
+export function currentDatasetResults(
+  appState: AppState
+): CommandResultEntry[] {
+  const dsKey = currentDatasetKey(appState);
+  return appState.commandResults
+    .toArray()
+    .filter((e) => entryInDataset(e, dsKey));
+}
+
+/**
+ * clear the current dataset's results log (independent of pane
+ * visibility); other datasets' results are kept
+ */
 export function clearCommandResults(stateRef: StateRef<AppState>): void {
-  update(
-    stateRef,
-    (st) =>
-      st.set(
-        "commandResults",
-        st.commandResults.clear()
-      ) as AppState
-  );
+  update(stateRef, (st) => {
+    const dsKey = currentDatasetKey(st);
+    return st.set(
+      "commandResults",
+      st.commandResults.filterNot((e) => entryInDataset(e, dsKey))
+    ) as AppState;
+  });
 }

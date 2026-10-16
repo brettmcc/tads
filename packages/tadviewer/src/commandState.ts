@@ -3,7 +3,7 @@
  * log of command results, kept separate from saved Tad view state.
  */
 
-import { DataSourcePath } from "reltab";
+import { DataSourceId, DataSourcePath } from "reltab";
 import { CommandKind, CommandOutcome, ResultBlock } from "./stataCommand";
 
 export interface CommandResultEntry {
@@ -29,6 +29,29 @@ export interface CommandResultEntry {
  */
 export function datasetKey(dsPath: DataSourcePath): string {
   return JSON.stringify(dsPath);
+}
+
+/**
+ * Does this entry belong to the dataset with the given key? Untagged
+ * entries (none are created by the app) are shown everywhere.
+ */
+export function entryInDataset(
+  entry: CommandResultEntry,
+  dsKey: string
+): boolean {
+  return entry.datasetKey === undefined || entry.datasetKey === dsKey;
+}
+
+/** Was this entry run against a dataset of the given data source? */
+export function entryInSource(
+  entry: CommandResultEntry,
+  sourceId: DataSourceId
+): boolean {
+  if (entry.datasetKey === undefined) {
+    return false;
+  }
+  const dsPath: DataSourcePath = JSON.parse(entry.datasetKey);
+  return JSON.stringify(dsPath.sourceId) === JSON.stringify(sourceId);
 }
 
 let entrySeq = 0;

@@ -2,10 +2,11 @@
  * Append-only results pane for Stata-style commands. Each entry echoes
  * the command, renders its output blocks as semantic tables (or
  * codebook sections), and exposes the generated SQL behind a
- * collapsible disclosure.
+ * collapsible disclosure. Only results run against the dataset being
+ * viewed are shown; each dataset keeps its own log.
  */
 import * as React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
 import {
@@ -380,7 +381,11 @@ export const ResultsPane: React.FunctionComponent<ResultsPaneProps> = ({
   appState,
   stateRef,
 }: ResultsPaneProps) => {
-  const entries = appState.commandResults.toArray();
+  const dsKey = commandActions.currentDatasetKey(appState);
+  const entries = useMemo(
+    () => commandActions.currentDatasetResults(appState),
+    [appState.commandResults, dsKey]
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
   // null == use the CSS default height; a number means the user has dragged
@@ -472,7 +477,7 @@ export const ResultsPane: React.FunctionComponent<ResultsPaneProps> = ({
     if (el != null) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [entries.length]);
+  }, [entries]);
 
   const resultsPaneOpen = appState.resultsPaneOpen;
 
@@ -513,7 +518,7 @@ export const ResultsPane: React.FunctionComponent<ResultsPaneProps> = ({
     matchesRef.current = matches;
     setMatchCount(matches.length);
     setActiveMatch((a) => (matches.length === 0 ? 0 : Math.min(a, matches.length - 1)));
-  }, [findOpen, findQuery, entries.length, resultsPaneOpen]);
+  }, [findOpen, findQuery, entries, resultsPaneOpen]);
 
   // paint the highlights and keep the current match on screen
   useEffect(() => {

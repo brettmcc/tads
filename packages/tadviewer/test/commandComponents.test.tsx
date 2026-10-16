@@ -26,7 +26,7 @@ import {
   tableQuery,
 } from "reltab";
 import { AppState } from "../src/AppState";
-import { toggleShown } from "../src/actions";
+import { closeDataSource, toggleShown } from "../src/actions";
 import { commandSchema } from "../src/commandActions";
 import { resetEntryIds } from "../src/commandState";
 import {
@@ -573,6 +573,75 @@ describe("ResultsPane", () => {
 
     fireEvent.click(screen.getByTestId("results-close-button"));
     expect(screen.queryByTestId("results-pane")).toBeNull();
+  });
+
+  test("each dataset shows and clears only its own results", async () => {
+    const stateRef = renderHarness();
+    const firstView = mutableGet(stateRef).viewState;
+    const otherView = firstView.set("dsPath", {
+      ...firstView.dsPath,
+      path: ["other"],
+    }) as ViewState;
+    const switchTo = (view: ViewState) =>
+      act(() => {
+        update(stateRef, (st) => st.set("viewState", view) as AppState);
+      });
+    const run = async (text: string) => {
+      const input = typeCommand(text);
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Enter" });
+      });
+    };
+
+    await run("sum a");
+    await screen.findByTestId("result-entry");
+    switchTo(otherView);
+    expect(screen.queryAllByTestId("result-entry")).toHaveLength(0);
+    await run("sum b");
+    await waitFor(() =>
+      expect(screen.getAllByTestId("result-entry")).toHaveLength(1)
+    );
+    expect(screen.getByTestId("result-entry").textContent).toContain("sum b");
+
+    fireEvent.click(screen.getByTestId("results-clear-button"));
+    expect(screen.queryAllByTestId("result-entry")).toHaveLength(0);
+
+    switchTo(firstView);
+    expect(screen.getAllByTestId("result-entry")).toHaveLength(1);
+    expect(screen.getByTestId("result-entry").textContent).toContain("sum a");
+    expect(mutableGet(stateRef).commandResults.size).toBe(1);
+  });
+
+  test("closing a data source drops its results", async () => {
+    const st = mkAppState();
+    const removeDataSource = jest.fn(async () => {});
+    const { dsPath } = st.viewState;
+    const otherSource = { providerName: "duckdb", resourceId: "other.db" };
+    const entry = (id: string, path: any) => ({
+      id,
+      command: "sum a",
+      startedAt: "",
+      elapsedMs: 0,
+      sql: "",
+      status: "ok" as const,
+      datasetKey: JSON.stringify(path),
+    });
+    const stateRef = mkRef(
+      st
+        .set("rtc", { removeDataSource } as any)
+        .set(
+          "commandResults",
+          Immutable.List([
+            entry("cmd-1", dsPath),
+            entry("cmd-2", { sourceId: otherSource, path: ["t"] }),
+          ])
+        ) as AppState
+    );
+    await closeDataSource(dsPath.sourceId, stateRef);
+    expect(removeDataSource).toHaveBeenCalled();
+    expect(
+      mutableGet(stateRef).commandResults.map((e) => e.id).toArray()
+    ).toEqual(["cmd-2"]);
   });
 
   test("entries accumulate in order (append-only)", async () => {

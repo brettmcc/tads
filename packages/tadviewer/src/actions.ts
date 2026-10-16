@@ -21,6 +21,7 @@ import {
 } from "reltab";
 import * as util from "./util";
 import { QueryView } from "./QueryView";
+import { entryInSource } from "./commandState";
 
 export async function initAppState(
   rtc: reltab.ReltabConnection,
@@ -157,7 +158,12 @@ export const closeDataSource = async (
   const appState = mutableGet(stateRef);
   await appState.rtc.removeDataSource(sourceId);
   const sourceIdStr = JSON.stringify(sourceId);
-  update(stateRef, (st: AppState): AppState => {
+  update(stateRef, (st0: AppState): AppState => {
+    // the closed source's command results go with it
+    const st = st0.set(
+      "commandResults",
+      st0.commandResults.filterNot((e) => entryInSource(e, sourceId))
+    ) as AppState;
     const viewSourceId = st.viewState?.dsPath.sourceId;
     if (viewSourceId && JSON.stringify(viewSourceId) === sourceIdStr) {
       return st

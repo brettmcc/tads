@@ -4,8 +4,8 @@
  *
  * Command-line memory is per dataset: switching datasets stashes the
  * typed input (and any error shown for it) and restores whatever was
- * last typed against the newly shown dataset, and up/down history only
- * recalls commands run against the current dataset.
+ * last typed against the newly shown dataset. Up/down history, like the
+ * results pane, only covers commands run against the current dataset.
  */
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,7 +13,6 @@ import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
 import { AppState } from "../AppState";
 import * as commandActions from "../commandActions";
-import { datasetKey } from "../commandState";
 
 export interface CommandBarProps {
   appState: AppState;
@@ -127,7 +126,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     selectedItemRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [completionMenu]);
 
-  const dsKey = appState.viewState ? datasetKey(appState.viewState.dsPath) : "";
+  const dsKey = commandActions.currentDatasetKey(appState);
   const stashRef = useRef(new Map<string, StashedCommandLine>());
   const shownKeyRef = useRef(dsKey);
   const liveLineRef = useRef<StashedCommandLine>({ input: "", error: null });
@@ -151,10 +150,7 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
   const { commandRunning, commandResults } = appState;
   const history = useMemo(
     () =>
-      commandResults
-        .toArray()
-        .filter((e) => e.datasetKey === undefined || e.datasetKey === dsKey)
-        .map((e) => e.command),
+      commandActions.currentDatasetResults(appState).map((e) => e.command),
     [commandResults, dsKey]
   );
   const { baseSchema } = appState.viewState;
