@@ -61,8 +61,7 @@
  * query computes every group at once (GROUP BY / PARTITION BY the by
  * variables, with the group key selected as VARCHAR columns by_0, by_1,
  * ...), so a by-prefixed command costs one scan rather than one per
- * group. summarize, detail is the exception: its order statistics need
- * each group's N, so phase 2 runs once per group and variable.
+ * group.
  */
 
 import {
@@ -230,22 +229,12 @@ export interface SumDetailPlan {
   /** non-numeric variables requested but omitted from the detail panels */
   skipped: string[];
   /**
-   * phase 1: N and mean for every variable in one scan (one row per
-   * group under a by prefix)
+   * one query per variable, in `variables` order: N, mean, Stata's
+   * percentiles, the four smallest/largest values (small_k, large_i), and
+   * moments, as one row (one per group, keyed by_0, by_1, ..., under a by
+   * prefix)
    */
-  phase1Sql: string;
-  /**
-   * phase 2 (per variable, given N and mean from phase 1): percentiles,
-   * extremes, moments. Pure function of the plan; the executor invokes
-   * it once the counts are known. Under a by prefix, `groupKey` (the
-   * by_i values of a group) restricts it to that group.
-   */
-  mkDetailSql(
-    variable: string,
-    n: number,
-    mean: number,
-    groupKey?: Array<string | null>
-  ): string;
+  sqls: string[];
 }
 
 export interface TabulatePlan {
@@ -671,26 +660,6 @@ function byGroupLimitCondition(by: ByPrefix, ctx: PlanContext): string {
   return `dense_rank() OVER (ORDER BY ${byTerms(by, ctx)}) <= ${BY_GROUP_LIMIT}`;
 }
 
-/**
- * SQL condition selecting one group by its key (the by_i values returned
- * by the group-list query).
- */
-function byGroupCondition(
-  by: ByPrefix,
-  ctx: PlanContext,
-  groupKey: Array<string | null>
-): string {
-  return by.variables
-    .map((c, i) => {
-      const q = ctx.dialect.quoteCol(c);
-      const v = groupKey[i];
-      return v === null
-        ? `${q} IS NULL`
-        : `CAST(${q} AS VARCHAR) = ${sqlStringLiteral(v)}`;
-    })
-    .join(" AND ");
-}
-
 function planByGroups(by: ByPrefix, ctx: PlanContext): ByGroupsPlan {
   const terms = byTerms(by, ctx);
   const lines = [
@@ -826,29 +795,28 @@ function summarizeVarKind(
 }
 
 /**
- * The k-th order statistic of a column, exact and robust: DuckDB's
- * quantile_disc(x, p) returns x_(ceil(p*N)), so p = (k - 0.5)/N always
- * lands on x_(k) regardless of floating-point rounding.
+ * Stata percentile definition (summarize, detail): with h = N*p/100,
+ * the percentile is x_(ceil(h)) when h is not an integer, and the
+ * average of x_(h) and x_(h+1) when it is. Over ranked rows (v, rank r,
+ * group size n), as an aggregate: n is the same on every row of a group,
+ * and the integer arithmetic on n*p keeps the test exact.
  */
-function orderStatSql(q: string, k: number, n: number): string {
-  return `quantile_disc(${q}, ${(k - 0.5) / n})`;
+function stataPercentileSql(p: number): string {
+  const at = (rank: string) => `max(v) FILTER (WHERE r = ${rank})`;
+  return [
+    `CASE WHEN any_value(n) * ${p} % 100 = 0`,
+    `THEN (${at(`n * ${p} // 100`)} + ${at(`n * ${p} // 100 + 1`)}) / 2.0`,
+    `ELSE ${at(`(n * ${p} + 99) // 100`)} END`,
+  ].join(" ");
 }
 
 /**
- * Stata percentile definition (summarize, detail): with h = N*p/100,
- * the percentile is x_(ceil(h)) when h is not an integer, and the
- * average of x_(h) and x_(h+1) when it is.
+ * summarize, detail: one query per variable that ranks the variable's
+ * non-missing values once (row_number, partitioned by group under a by
+ * prefix) and reads every order statistic -- Stata's percentiles and the
+ * four smallest/largest values -- off the ranks, alongside the moments.
+ * Every group comes out of the same query, one row each.
  */
-function stataPercentileSql(q: string, p: number, n: number): string {
-  const h100 = n * p; // h = h100 / 100
-  if (h100 % 100 === 0) {
-    const h = h100 / 100;
-    return `(${orderStatSql(q, h, n)} + ${orderStatSql(q, h + 1, n)}) / 2.0`;
-  }
-  const k = Math.ceil(h100 / 100);
-  return orderStatSql(q, k, n);
-}
-
 function planSumDetail(
   cmd: StataCommand & { kind: "summarize" },
   ctx: PlanContext
@@ -866,82 +834,78 @@ function planSumDetail(
       "summarize, detail requires at least one numeric variable"
     );
   }
-  const from = fromClause(ctx);
-  const where = whereClause(cmd.filter, ctx);
-  const dialect = ctx.dialect;
-
   const by = cmd.by;
-  const phase1Cols = [
-    ...(by ? byKeyCols(by, ctx) : []),
-    ...explicit.flatMap((colId, idx) => {
-      const q = dialect.quoteCol(colId);
-      return [
-        `count(${q}) AS n_${idx}`,
-        `CAST(avg(${q}) AS DOUBLE) AS mean_${idx}`,
-      ];
-    }),
-  ];
-  const phase1Lines = [...selectList(phase1Cols), from];
-  if (where !== "") {
-    phase1Lines.push(where);
-  }
-  if (by) {
-    phase1Lines.push(...byAggregateTail(by, ctx));
-  }
-
-  const mkDetailSql = (
-    variable: string,
-    n: number,
-    mean: number,
-    groupKey?: Array<string | null>
-  ): string => {
-    const q = dialect.quoteCol(variable);
-    const detailWhere =
-      by === undefined || groupKey === undefined
-        ? where
-        : whereClause(cmd.filter, ctx, byGroupCondition(by, ctx, groupKey));
-    const meanLit = numberLiteral(mean);
-    const cols: string[] = [];
-    for (const p of DETAIL_PERCENTILES) {
-      cols.push(
-        `CAST(${stataPercentileSql(q, p, n)} AS DOUBLE) AS p${p}`
-      );
-    }
-    const nSmall = Math.min(4, n);
-    for (let k = 1; k <= nSmall; k++) {
-      cols.push(`CAST(${orderStatSql(q, k, n)} AS DOUBLE) AS small_${k}`);
-    }
-    for (let i = 0; i < Math.min(4, n); i++) {
-      const k = n - i;
-      cols.push(
-        `CAST(${orderStatSql(q, k, n)} AS DOUBLE) AS large_${i + 1}`
-      );
-    }
-    cols.push(
-      `CAST(sum(${q}) AS DOUBLE) AS sum`,
-      `CAST(stddev_samp(${q}) AS DOUBLE) AS sd`,
-      `CAST(var_samp(${q}) AS DOUBLE) AS variance`,
-      // central moments about the phase-1 mean, for Stata's
-      // population-moment skewness (m3/m2^1.5) and kurtosis (m4/m2^2)
-      `CAST(avg(pow(${q} - ${meanLit}, 2)) AS DOUBLE) AS m2`,
-      `CAST(avg(pow(${q} - ${meanLit}, 3)) AS DOUBLE) AS m3`,
-      `CAST(avg(pow(${q} - ${meanLit}, 4)) AS DOUBLE) AS m4`
-    );
-    const lines = [...selectList(cols), from];
-    if (detailWhere !== "") {
-      lines.push(detailWhere);
-    }
-    return lines.join("\n");
+  // the inner query renames everything (g_i, v, r, n, mean), so column
+  // names in the data can never collide with the outer query's aliases
+  const groupCols = by ? by.variables.map((_, i) => `g_${i}`) : [];
+  const over = (orderBy?: string): string => {
+    const parts = [
+      ...(by ? [`PARTITION BY ${byTerms(by, ctx)}`] : []),
+      ...(orderBy === undefined ? [] : [`ORDER BY ${orderBy}`]),
+    ];
+    return `OVER (${parts.join(" ")})`;
   };
 
+  const sqls = explicit.map((colId) => {
+    const q = ctx.dialect.quoteCol(colId);
+    const innerLines = [
+      ...selectList([
+        ...(by
+          ? by.variables.map(
+              (c, i) => `${ctx.dialect.quoteCol(c)} AS ${groupCols[i]}`
+            )
+          : []),
+        `${q} AS v`,
+        `row_number() ${over(q)} AS r`,
+        `count(*) ${over()} AS n`,
+        `avg(${q}) ${over()} AS mean`,
+      ]),
+      fromClause(ctx),
+      whereClause(cmd.filter, ctx, `${q} IS NOT NULL`),
+    ];
+    const inner = innerLines
+      .join("\n")
+      .split("\n")
+      .map((line) => "  " + line)
+      .join("\n");
+    const cols = [
+      ...groupCols.map((g, i) => `CAST(${g} AS VARCHAR) AS by_${i}`),
+      `any_value(n) AS n`,
+      `CAST(any_value(mean) AS DOUBLE) AS mean`,
+      ...DETAIL_PERCENTILES.map(
+        (p) => `CAST(${stataPercentileSql(p)} AS DOUBLE) AS p${p}`
+      ),
+      ...[1, 2, 3, 4].map(
+        (k) => `CAST(max(v) FILTER (WHERE r = ${k}) AS DOUBLE) AS small_${k}`
+      ),
+      // large_i is x_(n-i+1): the largest first
+      ...[1, 2, 3, 4].map(
+        (i) =>
+          `CAST(max(v) FILTER (WHERE r = n - ${i - 1}) AS DOUBLE) AS large_${i}`
+      ),
+      `CAST(sum(v) AS DOUBLE) AS sum`,
+      `CAST(stddev_samp(v) AS DOUBLE) AS sd`,
+      `CAST(var_samp(v) AS DOUBLE) AS variance`,
+      // central moments about the mean, for Stata's population-moment
+      // skewness (m3/m2^1.5) and kurtosis (m4/m2^2)
+      `CAST(avg(pow(v - mean, 2)) AS DOUBLE) AS m2`,
+      `CAST(avg(pow(v - mean, 3)) AS DOUBLE) AS m3`,
+      `CAST(avg(pow(v - mean, 4)) AS DOUBLE) AS m4`,
+    ];
+    const lines = [...selectList(cols), "FROM (", inner, ")"];
+    if (by) {
+      const terms = groupCols.join(", ");
+      lines.push(
+        `GROUP BY ${terms}`,
+        `ORDER BY ${terms}`,
+        `LIMIT ${BY_GROUP_LIMIT}`
+      );
+    }
+    return lines.join("\n");
+  });
+
   return withBy(
-    {
-      kind: "sumDetail",
-      variables: explicit,
-      skipped,
-      phase1Sql: phase1Lines.join("\n"),
-      mkDetailSql,
-    },
+    { kind: "sumDetail", variables: explicit, skipped, sqls },
     by,
     ctx
   );

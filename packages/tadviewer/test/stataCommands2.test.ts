@@ -414,36 +414,46 @@ describe("list and histogram plans", () => {
 });
 
 describe("summarize detail plan", () => {
-  test("two-phase: shared N/mean scan then per-variable detail", () => {
+  test("one query per variable reads the order statistics off its ranks", () => {
     const p = plan("sum price mpg if mpg > 1, d") as SumDetailPlan;
     expect(p.kind).toBe("sumDetail");
     expect(p.variables).toEqual(["price", "mpg"]);
-    expect(p.phase1Sql).toContain(`count("price") AS n_0`);
-    expect(p.phase1Sql).toContain(`CAST(avg("mpg") AS DOUBLE) AS mean_1`);
-    expect(p.phase1Sql).toContain(`WHERE ("mpg" > 1)`);
-
-    const detail = p.mkDetailSql("price", 5, 3.2);
-    // Stata percentile: N=5, p50 -> h=2.5 -> x_3 = quantile_disc at (3-0.5)/5
-    expect(detail).toContain(
-      `CAST(quantile_disc("price", 0.5) AS DOUBLE) AS p50`
+    expect(p.sqls).toHaveLength(2);
+    const [price, mpg] = p.sqls;
+    expect(price).toContain(`row_number() OVER (ORDER BY "price") AS r`);
+    expect(price).toContain(`count(*) OVER () AS n`);
+    expect(price).toContain(`WHERE ("mpg" > 1) AND "price" IS NOT NULL`);
+    expect(mpg).toContain(`row_number() OVER (ORDER BY "mpg") AS r`);
+    // Stata percentile: x_(ceil(h)) for h = N*p/100, or the average of
+    // x_(h) and x_(h+1) when h is an integer
+    expect(price).toContain(
+      "CAST(CASE WHEN any_value(n) * 25 % 100 = 0" +
+        " THEN (max(v) FILTER (WHERE r = n * 25 // 100)" +
+        " + max(v) FILTER (WHERE r = n * 25 // 100 + 1)) / 2.0" +
+        " ELSE max(v) FILTER (WHERE r = (n * 25 + 99) // 100) END" +
+        " AS DOUBLE) AS p25"
     );
-    // p25 -> h=1.25 -> x_2 -> (2-0.5)/5 = 0.3
-    expect(detail).toContain(
-      `CAST(quantile_disc("price", 0.3) AS DOUBLE) AS p25`
+    expect(price).toContain(
+      `CAST(max(v) FILTER (WHERE r = 2) AS DOUBLE) AS small_2`
     );
-    // central moments about the supplied mean
-    expect(detail).toContain(`avg(pow("price" - 3.2, 3))`);
-    expect(detail).toContain(`small_1`);
-    expect(detail).toContain(`large_4`);
+    expect(price).toContain(
+      `CAST(max(v) FILTER (WHERE r = n - 3) AS DOUBLE) AS large_4`
+    );
+    // central moments about the variable's own mean
+    expect(price).toContain(`CAST(avg(pow(v - mean, 3)) AS DOUBLE) AS m3`);
+    expect(price).not.toContain("GROUP BY");
   });
 
-  test("integer-h percentile averages adjacent order stats", () => {
-    const p = plan("sum price, d") as SumDetailPlan;
-    // N=4, p25 -> h=1 exactly -> (x_1 + x_2)/2
-    const detail = p.mkDetailSql("price", 4, 10);
-    expect(detail).toContain(
-      `CAST((quantile_disc("price", 0.125) + quantile_disc("price", 0.375)) / 2.0 AS DOUBLE) AS p25`
+  test("under a by prefix the ranks restart in each group", () => {
+    const p = plan("bysort make: sum price, d") as SumDetailPlan;
+    const [price] = p.sqls;
+    expect(price).toContain(
+      `row_number() OVER (PARTITION BY "make" ORDER BY "price") AS r`
     );
+    expect(price).toContain(`"make" AS g_0`);
+    expect(price).toContain(`CAST(g_0 AS VARCHAR) AS by_0`);
+    expect(price).toContain(`GROUP BY g_0\nORDER BY g_0\nLIMIT 500`);
+    expect(p.by?.variables).toEqual(["make"]);
   });
 
   test("non-numeric variables are excluded; all-string varlist errors", () => {

@@ -92,10 +92,10 @@ by group, sort: distinct id, joint
   the total. `list` shows up to 200 rows per group and numbers them within
   the group.
 
-Each command still costs one scan of the data however many groups there are:
-the statistics for every group come from a single grouped query (plus a
-query listing the groups, which reads only the by variables). `summarize, detail` is the exception — its
-percentiles need each group's N, so the percentile query runs once per group.
+The number of queries does not grow with the number of groups: every
+group's statistics come out of the same grouped query (one per variable for
+`summarize, detail`, as without `by`), plus one query listing the groups,
+which reads only the by variables.
 
 By-group results for `summarize` (with and without `detail`), `tabulate`,
 `distinct`, and `count`, including the group order and the groups an `if`

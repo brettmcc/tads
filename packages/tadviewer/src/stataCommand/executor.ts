@@ -186,53 +186,59 @@ interface ByGroupsResult {
   groups: GroupKey[];
   /** total number of groups, which may exceed groups.length */
   nGroups: number;
-  /** the command query's rows, partitioned by group key */
-  rowsByGroup: Map<string, Row[]>;
+  /** each grouped query's rows, partitioned by group key */
+  rowsByGroup: Array<Map<string, Row[]>>;
 }
 
 /**
  * Run a by-prefixed command's group-list query alongside its grouped
- * query and partition the latter's rows by group.
+ * queries and partition the latter's rows by group.
  */
 async function runByGroups(
   by: ByGroupsPlan,
-  sql: string,
+  sqls: string[],
   ctx: CommandExecutionContext
 ): Promise<ByGroupsResult> {
-  const [groupsRes, res] = await Promise.all([
-    ctx.runReadOnlySql(by.groupsSql),
-    ctx.runReadOnlySql(sql),
-  ]);
+  const [groupsRes, ...results] = await Promise.all(
+    [by.groupsSql, ...sqls].map((sql) => ctx.runReadOnlySql(sql))
+  );
   const nVars = by.variables.length;
-  const rowsByGroup = new Map<string, Row[]>();
-  for (const row of res.rows) {
-    const k = JSON.stringify(groupKeyOf(row, nVars));
-    const bucket = rowsByGroup.get(k);
-    if (bucket === undefined) {
-      rowsByGroup.set(k, [row]);
-    } else {
-      bucket.push(row);
+  const rowsByGroup = results.map((res) => {
+    const partition = new Map<string, Row[]>();
+    for (const row of res.rows) {
+      const k = JSON.stringify(groupKeyOf(row, nVars));
+      const bucket = partition.get(k);
+      if (bucket === undefined) {
+        partition.set(k, [row]);
+      } else {
+        bucket.push(row);
+      }
     }
-  }
+    return partition;
+  });
   const groups = groupsRes.rows.map((row: Row) => groupKeyOf(row, nVars));
   const nGroups = asNumber(groupsRes.rows[0]?.n_by_groups) ?? groups.length;
   return { groups, nGroups, rowsByGroup };
 }
 
 /**
- * Interleave a header per group with that group's result blocks; a group
- * with no rows (every observation failed the `if`) gets render([]).
+ * Interleave a header per group with that group's result blocks. `render`
+ * gets the group's rows from each grouped query; a group with no rows
+ * (every observation failed the `if`) gets empty arrays.
  */
 function byGroupBlocks(
   by: ByGroupsPlan,
   result: ByGroupsResult,
-  render: (rows: Row[]) => ResultBlock[]
+  render: (rowsPerQuery: Row[][]) => ResultBlock[]
 ): ResultBlock[] {
   return [
-    ...result.groups.flatMap((key): ResultBlock[] => [
-      { kind: "byGroup", label: byGroupLabel(by.variables, key) },
-      ...render(result.rowsByGroup.get(JSON.stringify(key)) ?? []),
-    ]),
+    ...result.groups.flatMap((key): ResultBlock[] => {
+      const k = JSON.stringify(key);
+      return [
+        { kind: "byGroup", label: byGroupLabel(by.variables, key) },
+        ...render(result.rowsByGroup.map((part) => part.get(k) ?? [])),
+      ];
+    }),
     ...byTruncationNote(result.groups.length, result.nGroups),
   ];
 }
@@ -256,9 +262,9 @@ async function runMaybeBy(
     const res = await ctx.runReadOnlySql(plan.sql);
     return { blocks: render(res.rows), sql: plan.sql };
   }
-  const result = await runByGroups(plan.by, plan.sql, ctx);
+  const result = await runByGroups(plan.by, [plan.sql], ctx);
   return {
-    blocks: byGroupBlocks(plan.by, result, render),
+    blocks: byGroupBlocks(plan.by, result, ([rows]) => render(rows)),
     sql: [plan.by.groupsSql, plan.sql].join(";\n\n"),
   };
 }
@@ -301,86 +307,69 @@ function summarizeBlocks(plan: SummarizePlan, rows: Row[]): ResultBlock[] {
   ];
 }
 
-/**
- * summarize, detail phase 2: one detail panel per variable, given the
- * phase-1 row (N and mean per variable) of the whole session dataset or
- * of one by group (`groupKey`).
- */
-async function sumDetailBlocks(
-  plan: SumDetailPlan,
-  wide: Row,
-  ctx: CommandExecutionContext,
-  groupKey?: GroupKey
-): Promise<{ blocks: ResultBlock[]; sqls: string[] }> {
-  const detailJobs = plan.variables.map(async (variable, idx) => {
-    const n = asNumber(wide[`n_${idx}`]) ?? 0;
-    const mean = asNumber(wide[`mean_${idx}`]);
-    if (n === 0 || mean === null) {
-      const empty: ResultBlock = {
-        kind: "sumDetail",
-        variable,
-        n: 0,
-        sum: null,
-        mean: null,
-        sd: null,
-        variance: null,
-        skewness: null,
-        kurtosis: null,
-        percentiles: DETAIL_PERCENTILES.map((p) => ({ p, value: null })),
-        smallest: [],
-        largest: [],
-      };
-      return { block: empty, sql: null as string | null };
-    }
-    const detailSql = plan.mkDetailSql(variable, n, mean, groupKey);
-    const res = await ctx.runReadOnlySql(detailSql);
-    const row: Row = res.rows[0] ?? {};
-    const m2 = asNumber(row.m2);
-    const m3 = asNumber(row.m3);
-    const m4 = asNumber(row.m4);
-    // Stata population-moment definitions
-    const skewness =
-      m2 !== null && m3 !== null && m2 > 0 ? m3 / Math.pow(m2, 1.5) : null;
-    const kurtosis =
-      m2 !== null && m4 !== null && m2 > 0 ? m4 / (m2 * m2) : null;
-    const smallest: number[] = [];
-    for (let k = 1; k <= Math.min(4, n); k++) {
-      const v = asNumber(row[`small_${k}`]);
-      if (v !== null) smallest.push(v);
-    }
-    const largest: number[] = [];
-    for (let i = Math.min(4, n); i >= 1; i--) {
-      // large_i was emitted from x_(N) down to x_(N-3); display ascending
-      const v = asNumber(row[`large_${i}`]);
-      if (v !== null) largest.push(v);
-    }
-    const block: ResultBlock = {
+/** summarize, detail panel of one variable from its query's row */
+function sumDetailBlock(variable: string, row: Row): ResultBlock {
+  // no non-missing values: the aggregate row is all null (or, for a by
+  // group, absent)
+  const n = asNumber(row.n) ?? 0;
+  if (n === 0) {
+    return {
       kind: "sumDetail",
       variable,
-      n,
-      sum: asNumber(row.sum),
-      mean,
-      sd: asNumber(row.sd),
-      variance: asNumber(row.variance),
-      skewness,
-      kurtosis,
-      percentiles: DETAIL_PERCENTILES.map((p) => ({
-        p,
-        value: asNumber(row[`p${p}`]),
-      })),
-      smallest,
-      largest,
+      n: 0,
+      sum: null,
+      mean: null,
+      sd: null,
+      variance: null,
+      skewness: null,
+      kurtosis: null,
+      percentiles: DETAIL_PERCENTILES.map((p) => ({ p, value: null })),
+      smallest: [],
+      largest: [],
     };
-    return { block, sql: detailSql };
-  });
-
-  const results = await Promise.all(detailJobs);
+  }
+  const m2 = asNumber(row.m2);
+  const m3 = asNumber(row.m3);
+  const m4 = asNumber(row.m4);
+  // Stata population-moment definitions
+  const skewness =
+    m2 !== null && m3 !== null && m2 > 0 ? m3 / Math.pow(m2, 1.5) : null;
+  const kurtosis =
+    m2 !== null && m4 !== null && m2 > 0 ? m4 / (m2 * m2) : null;
+  const smallest: number[] = [];
+  for (let k = 1; k <= Math.min(4, n); k++) {
+    const v = asNumber(row[`small_${k}`]);
+    if (v !== null) smallest.push(v);
+  }
+  const largest: number[] = [];
+  for (let i = Math.min(4, n); i >= 1; i--) {
+    // large_i is x_(N-i+1), the largest first; display ascending
+    const v = asNumber(row[`large_${i}`]);
+    if (v !== null) largest.push(v);
+  }
   return {
-    blocks: results.map((r) => r.block),
-    sqls: results.flatMap((r) => (r.sql === null ? [] : [r.sql])),
+    kind: "sumDetail",
+    variable,
+    n,
+    sum: asNumber(row.sum),
+    mean: asNumber(row.mean),
+    sd: asNumber(row.sd),
+    variance: asNumber(row.variance),
+    skewness,
+    kurtosis,
+    percentiles: DETAIL_PERCENTILES.map((p) => ({
+      p,
+      value: asNumber(row[`p${p}`]),
+    })),
+    smallest,
+    largest,
   };
 }
 
+/**
+ * summarize, detail: one query per variable, run concurrently; under a by
+ * prefix each returns a row per group.
+ */
 async function runSumDetail(
   plan: SumDetailPlan,
   ctx: CommandExecutionContext
@@ -392,40 +381,23 @@ async function runSumDetail(
       text: `note: omitted non-numeric variable(s): ${plan.skipped.join(", ")}`,
     });
   }
+  const render = (rowsPerVariable: Row[][]): ResultBlock[] =>
+    plan.variables.map((variable, i) =>
+      sumDetailBlock(variable, rowsPerVariable[i][0] ?? {})
+    );
   if (plan.by === undefined) {
-    const phase1 = await ctx.runReadOnlySql(plan.phase1Sql);
-    const detail = await sumDetailBlocks(plan, phase1.rows[0] ?? {}, ctx);
-    blocks.push(...detail.blocks);
-    return {
-      blocks,
-      sql: [plan.phase1Sql, ...detail.sqls].join(";\n\n"),
-    };
-  }
-  // by groups: phase 1 is one grouped scan; phase 2 depends on each
-  // group's N, so it runs group by group (variables concurrently)
-  const result = await runByGroups(plan.by, plan.phase1Sql, ctx);
-  let firstGroupSqls: string[] = [];
-  for (const key of result.groups) {
-    const wide = result.rowsByGroup.get(JSON.stringify(key))?.[0] ?? {};
-    const detail = await sumDetailBlocks(plan, wide, ctx, key);
-    blocks.push(
-      { kind: "byGroup", label: byGroupLabel(plan.by.variables, key) },
-      ...detail.blocks
+    const results = await Promise.all(
+      plan.sqls.map((sql) => ctx.runReadOnlySql(sql))
     );
-    if (firstGroupSqls.length === 0) {
-      firstGroupSqls = detail.sqls;
-    }
+    blocks.push(...render(results.map((res) => res.rows)));
+    return { blocks, sql: plan.sqls.join(";\n\n") };
   }
-  blocks.push(...byTruncationNote(result.groups.length, result.nGroups));
-  // the per-group detail queries differ only in their group condition,
-  // so only the first group's are recorded
-  const sqlParts = [plan.by.groupsSql, plan.phase1Sql, ...firstGroupSqls];
-  if (result.groups.length > 1 && firstGroupSqls.length > 0) {
-    sqlParts.push(
-      `-- the detail queries above repeat for each of the ${result.groups.length} groups`
-    );
-  }
-  return { blocks, sql: sqlParts.join(";\n\n") };
+  const result = await runByGroups(plan.by, plan.sqls, ctx);
+  blocks.push(...byGroupBlocks(plan.by, result, render));
+  return {
+    blocks,
+    sql: [plan.by.groupsSql, ...plan.sqls].join(";\n\n"),
+  };
 }
 
 function tabulateBlocks(plan: TabulatePlan, resRows: Row[]): ResultBlock[] {

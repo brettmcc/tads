@@ -898,7 +898,7 @@ describe("summarize, detail", () => {
 
     expect(block.smallest).toEqual([1, 2, 3, 4]);
     expect(block.largest).toEqual([2, 3, 4, 6]);
-    expect(outcome.sql).toContain("quantile_disc");
+    expect(outcome.sql).toContain("row_number()");
   });
 
   test("detail handles multiple variables on one connection", async () => {
@@ -1296,7 +1296,7 @@ describe("by prefix", () => {
     );
   });
 
-  test("summarize, detail runs phase 2 per group and records one group's SQL", async () => {
+  test("summarize, detail ranks within groups in one query per variable", async () => {
     const { outcome, groups } = await runByGroups("by select: sum a b, detail");
     expect(groups).toHaveLength(3);
     const [aPanel, bPanel] = groups[0].blocks;
@@ -1304,11 +1304,24 @@ describe("by prefix", () => {
       throw new Error("expected detail panels");
     }
     expect([aPanel.variable, aPanel.n, aPanel.mean]).toEqual(["a", 2, 1.5]);
+    expect(aPanel.smallest).toEqual([1, 2]);
+    expect(aPanel.largest).toEqual([1, 2]);
     expect([bPanel.variable, bPanel.n, bPanel.mean]).toEqual(["b", 2, 2]);
-    expect(outcome.sql).toContain(
-      "the detail queries above repeat for each of the 3 groups"
-    );
-    expect(outcome.sql).toContain(`CAST("select" AS VARCHAR) = 'x'`);
+    // group-list query plus one query per variable
+    expect(outcome.sql.split(";\n\n")).toHaveLength(3);
+    // y: a = 3, 4 (one missing); b = 4.5, 5.5 (one missing)
+    const [yA] = groups[1].blocks;
+    if (yA.kind !== "sumDetail") throw new Error("expected detail panel");
+    expect(yA.n).toBe(2);
+    expect(yA.percentiles.find((pe) => pe.p === 50)!.value).toBe(3.5);
+  });
+
+  test("summarize, detail of a group the if empties is an empty panel", async () => {
+    const { groups } = await runByGroups("by select: sum a if a > 5, detail");
+    const [xA] = groups[0].blocks;
+    if (xA.kind !== "sumDetail") throw new Error("expected detail panel");
+    expect(xA.n).toBe(0);
+    expect(xA.smallest).toEqual([]);
   });
 
   test("distinct per variable and summarize of an emptied group", async () => {
