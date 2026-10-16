@@ -321,6 +321,8 @@ const ScatterBlock: React.FunctionComponent<{ block: ScatterBlockData }> = ({
   };
   const scale = (axis: ScatterAxis) => (axis === "numeric" ? "linear" : "time");
   const single = block.series.length === 1;
+  // marker radius: Stata-sized for small data, finer as points pile up
+  const size = block.plotted <= 500 ? 2.5 : block.plotted <= 3000 ? 1.8 : 1.2;
   return (
     <div className="command-scatter" data-testid="scatter-block">
       <VictoryChart
@@ -352,13 +354,13 @@ const ScatterBlock: React.FunctionComponent<{ block: ScatterBlockData }> = ({
           <VictoryScatter
             key={s.variable}
             data={s.data}
-            size={2}
+            size={size}
             groupComponent={<CanvasGroup />}
             dataComponent={<CanvasPoint />}
             style={{
               data: {
                 fill: SCATTER_COLORS[i % SCATTER_COLORS.length],
-                opacity: 0.8,
+                opacity: 0.7,
               },
             }}
           />
