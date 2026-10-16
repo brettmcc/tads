@@ -4,7 +4,13 @@
 import "source-map-support/register";
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
-import OneRef, { mkRef, refContainer, mutableGet, StateRef } from "oneref";
+import OneRef, {
+  mkRef,
+  refContainer,
+  mutableGet,
+  StateRef,
+  addStateChangeListener,
+} from "oneref";
 import {
   AppPane,
   AppPaneBaseProps,
@@ -250,6 +256,24 @@ const init = async () => {
     });
 
     document.addEventListener("copy", function (e) {});
+
+    // Tell the main process whenever this window is sitting on the empty
+    // "Open Dataset" pane, so a file opened from Explorer lands here instead
+    // of in a new window that leaves this one behind it.
+    let reportedEmpty: boolean | null = null;
+    const reportEmpty = (st: AppState) => {
+      const empty =
+        st.initialized &&
+        st.viewState === null &&
+        !st.initialLoadPending &&
+        st.pendingOpens === 0;
+      if (empty !== reportedEmpty) {
+        reportedEmpty = empty;
+        ipcRenderer.send("window-empty", empty);
+      }
+    };
+    addStateChangeListener(stateRef, reportEmpty);
+    reportEmpty(mutableGet(stateRef));
 
     ipcRenderer.send("render-init-complete");
   } catch (e) {

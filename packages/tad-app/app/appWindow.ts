@@ -67,10 +67,51 @@ export function runPostInit(win: BrowserWindow, fn: () => void) {
   }
 }
 
+// Everything here is keyed by BrowserWindow id. A window's webContents id is
+// a separate counter that only happens to match it in simple sessions.
+const senderWindowId = (event: IpcMainEvent): number | null => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return win ? win.id : null;
+};
+
 ipcMain.on("render-init-complete", (event: IpcMainEvent) => {
   profLog("render-init-complete");
-  markInitialized(event.sender.id);
+  const windowId = senderWindowId(event);
+  if (windowId !== null) {
+    markInitialized(windowId);
+  }
 });
+
+/*
+ * Windows showing the empty "Open Dataset" pane, with no open in flight, as
+ * reported by their renderers. A file opened from Explorer, the command
+ * line or a dialog with no target window loads into one of these rather
+ * than into a new window stacked on top, which left the empty window and
+ * its "Open Dataset" button behind the dataset that was just opened.
+ */
+const emptyWindows = new Set<number>();
+
+ipcMain.on("window-empty", (event: IpcMainEvent, empty: boolean) => {
+  const windowId = senderWindowId(event);
+  if (windowId === null) {
+    return;
+  }
+  if (empty) {
+    emptyWindows.add(windowId);
+  } else {
+    emptyWindows.delete(windowId);
+  }
+});
+
+const findEmptyWindow = (): BrowserWindow | null => {
+  const isReusable = (win: BrowserWindow) =>
+    !win.isDestroyed() && emptyWindows.has(win.id) && isInitialized(win.id);
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && isReusable(focused)) {
+    return focused;
+  }
+  return BrowserWindow.getAllWindows().find(isReusable) ?? null;
+};
 
 // encode open parameters to pass to render process
 // If we're opening a CSV file, we just pass the target path.
@@ -191,7 +232,9 @@ const create = async (openParams: OpenParams): Promise<BrowserWindow> => {
   });
 
   // Emitted when the window is closed.
+  const windowId = win.id;
   win.on("closed", function () {
+    emptyWindows.delete(windowId);
     const idx = mainWindows.indexOf(win);
 
     if (idx) {
@@ -247,15 +290,34 @@ export function fileOpenParams(targetPath: string): OpenParams {
   return openParams;
 }
 
+const realFilePath = async (targetPath: string): Promise<string> =>
+  isRemotePath(targetPath) ? targetPath : fsPromises.realpath(targetPath);
+
 export const createFromFile = async (
   targetPath: string
 ): Promise<BrowserWindow> => {
-  let realTargetPath = targetPath;
-  if (!isRemotePath(targetPath)) {
-    realTargetPath = await fsPromises.realpath(targetPath);
-  }
-  const openParams = fileOpenParams(realTargetPath);
+  const openParams = fileOpenParams(await realFilePath(targetPath));
   const win = await create(openParams);
+  return win;
+};
+
+/**
+ * Open a file in an existing empty window if there is one, else in a new
+ * window.
+ */
+export const openFile = async (targetPath: string): Promise<BrowserWindow> => {
+  const openParams = fileOpenParams(await realFilePath(targetPath));
+  const win = findEmptyWindow();
+  if (win === null) {
+    return create(openParams);
+  }
+  // claim it now; its renderer reports again once the open settles
+  emptyWindows.delete(win.id);
+  win.webContents.send("open-file", { openParams });
+  if (win.isMinimized()) {
+    win.restore();
+  }
+  win.focus();
   return win;
 };
 
@@ -291,7 +353,7 @@ export const openDialog = async (
         openParams,
       });
     } else {
-      await createFromFile(filePath);
+      await openFile(filePath);
     }
   }
 };

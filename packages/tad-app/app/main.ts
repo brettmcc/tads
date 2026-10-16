@@ -223,7 +223,7 @@ async function openSrcFiles(options: commandLineArgs.CommandLineOptions) {
   for (const srcfile of options.srcfile) {
     const targetPath = getTargetPath(options, srcfile);
     if (win == null) {
-      win = await appWindow.createFromFile(targetPath);
+      win = await appWindow.openFile(targetPath);
     } else {
       appWindow.runPostInit(win, () => {
         const openParams = appWindow.fileOpenParams(targetPath);
@@ -338,7 +338,7 @@ const initApp =
 
             if (isReady) {
               log.warn("open-file: app is ready, opening in new window");
-              await appWindow.createFromFile(targetPath);
+              await appWindow.openFile(targetPath);
             } else {
               openFilePath = targetPath ?? null;
               log.warn("open-file: set openFilePath " + targetPath);
@@ -393,7 +393,7 @@ const initApp =
             if (openFilePath) {
               const openMsg = `pid ${process.pid}: Got open-file for ${openFilePath}`;
               log.warn(openMsg);
-              appWindow.createFromFile(openFilePath); // dialog.showMessageBox({ message: openMsg })
+              appWindow.openFile(openFilePath); // dialog.showMessageBox({ message: openMsg })
             } else {
               if (noSrcFile && !awaitingOpenEvent) {
                 // open an empty window; the renderer shows an
