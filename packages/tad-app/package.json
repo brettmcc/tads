@@ -1,6 +1,6 @@
 {
   "name": "tads",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "homepage": "https://github.com/brettmcc/tads",
   "description": "Tads: Tad tabular data viewer with Stata-style commands, built with Electron",
   "main": "dist/main.bundle.js",
