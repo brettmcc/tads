@@ -14,6 +14,10 @@ API, and record their generated SQL in the results pane.
 - Click **Break** to interrupt a running DuckDB query.
 - Click **Results** or press **Ctrl+`** to toggle the append-only results pane.
 - Click **Clear** in the results pane to clear command history.
+- Each open dataset keeps its own command line: switching datasets restores
+  the command you were typing there, and command history and the results
+  pane only cover commands run against the dataset being viewed. **Clear**
+  empties just that dataset's results; closing a data source discards them.
 - Press **Ctrl+F** (or click the magnifier in the results pane header) to search
   the results. **Enter**/**Shift+Enter** step through matches, **Esc** closes the
   find bar.
