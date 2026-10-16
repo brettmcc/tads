@@ -963,62 +963,105 @@ describe("histogram", () => {
 });
 
 describe("scatter", () => {
-  const byXY = (a: [number, number], b: [number, number]) =>
-    a[0] - b[0] || a[1] - b[1];
+  type Block = ResultBlock & { kind: "scatter" };
+  const scatter = async (
+    input: string,
+    c: CommandExecutionContext = ctx
+  ): Promise<{ block: Block; sql: string }> => {
+    const outcome = await executeCommand(input, c);
+    if (outcome.status !== "ok" || outcome.blocks[0].kind !== "scatter") {
+      throw new Error(JSON.stringify(outcome));
+    }
+    return { block: outcome.blocks[0], sql: outcome.sql };
+  };
+  /** each cell's center in data units, with its count */
+  const centers = (block: Block, si: number) => {
+    const wx = (block.xRange[1] - block.xRange[0]) / block.gridX;
+    const wy = (block.yRange[1] - block.yRange[0]) / block.gridY;
+    return block.series[si].cells
+      .map(([ix, iy, c]) => [
+        block.xRange[0] + (ix + 0.5) * wx,
+        block.yRange[0] + (iy + 0.5) * wy,
+        c,
+      ])
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  };
+  const expectNear = (
+    got: number[][],
+    want: number[][],
+    block: Block
+  ) => {
+    const wx = (block.xRange[1] - block.xRange[0]) / block.gridX;
+    const wy = (block.yRange[1] - block.yRange[0]) / block.gridY;
+    expect(got).toHaveLength(want.length);
+    got.forEach(([x, y, c], i) => {
+      expect(Math.abs(x - want[i][0])).toBeLessThanOrEqual(wx / 2 + 1e-9);
+      expect(Math.abs(y - want[i][1])).toBeLessThanOrEqual(wy / 2 + 1e-9);
+      expect(c).toBe(want[i][2]);
+    });
+  };
 
-  test("each y series plots its own non-missing pairs", async () => {
-    const outcome = await executeCommand("sc a b c", ctx);
-    expect(outcome.status).toBe("ok");
-    if (outcome.status !== "ok") return;
-    expect(outcome.sql).not.toContain("SAMPLE");
-    const block = outcome.blocks[0];
-    expect(block.kind).toBe("scatter");
-    if (block.kind !== "scatter") return;
+  test("each y series covers its own non-missing pairs", async () => {
+    const { block } = await scatter("sc a b c");
     // every row has c and at least one of a, b
     expect(block.n).toBe(6);
-    expect(block.plotted).toBe(6);
     expect(block.xAxis).toBe("numeric");
+    expect(block.xRange).toEqual([1, 5]);
+    expect(block.yRange).toEqual([1, 6.5]); // joint over a and b
     expect(block.series.map((s) => s.variable)).toEqual(["a", "b"]);
-    expect(block.series[0].points.sort(byXY)).toEqual([
-      [1, 1],
-      [2, 2],
-      [3, 3],
-      [3, 4],
-      [5, 6],
-    ]);
-    expect(block.series[1].points.sort(byXY)).toEqual([
-      [1, 1.5],
-      [2, 2.5],
-      [3, 4.5],
-      [5, 5.5],
-      [5, 6.5],
-    ]);
+    expectNear(
+      centers(block, 0),
+      [
+        [1, 1, 1],
+        [2, 2, 1],
+        [3, 3, 1],
+        [3, 4, 1],
+        [5, 6, 1],
+      ],
+      block
+    );
+    expectNear(
+      centers(block, 1),
+      [
+        [1, 1.5, 1],
+        [2, 2.5, 1],
+        [3, 4.5, 1],
+        [5, 5.5, 1],
+        [5, 6.5, 1],
+      ],
+      block
+    );
   });
 
   test("date and timestamp axes carry epoch milliseconds", async () => {
-    const dates = await executeCommand("sc a d", ctx);
-    if (dates.status !== "ok" || dates.blocks[0].kind !== "scatter") {
-      throw new Error(JSON.stringify(dates));
-    }
-    expect(dates.blocks[0].xAxis).toBe("date");
-    expect(dates.blocks[0].n).toBe(4);
-    expect(dates.blocks[0].series[0].points.sort(byXY)).toEqual([
-      [Date.UTC(2026, 0, 1), 1],
-      [Date.UTC(2026, 0, 2), 2],
-      [Date.UTC(2026, 0, 3), 3],
-      [Date.UTC(2026, 2, 1), 6],
-    ]);
+    const dates = (await scatter("sc a d")).block;
+    expect(dates.xAxis).toBe("date");
+    expect(dates.n).toBe(4);
+    expect(dates.xRange).toEqual([Date.UTC(2026, 0, 1), Date.UTC(2026, 2, 1)]);
+    expectNear(
+      centers(dates, 0),
+      [
+        [Date.UTC(2026, 0, 1), 1, 1],
+        [Date.UTC(2026, 0, 2), 2, 1],
+        [Date.UTC(2026, 0, 3), 3, 1],
+        [Date.UTC(2026, 2, 1), 6, 1],
+      ],
+      dates
+    );
 
-    const times = await executeCommand("tw sc a ts if a > 1", ctx);
-    if (times.status !== "ok" || times.blocks[0].kind !== "scatter") {
-      throw new Error(JSON.stringify(times));
-    }
-    expect(times.blocks[0].xAxis).toBe("timestamp");
-    expect(times.blocks[0].series[0].points.sort(byXY)).toEqual([
-      [Date.UTC(2026, 0, 2, 9, 30), 2],
-      [Date.UTC(2026, 0, 3, 10), 3],
-      [Date.UTC(2026, 2, 1, 23, 59, 59), 6],
+    const times = (await scatter("tw sc a ts if a > 1")).block;
+    expect(times.xAxis).toBe("timestamp");
+    expect(times.xRange).toEqual([
+      Date.UTC(2026, 0, 2, 9, 30),
+      Date.UTC(2026, 2, 1, 23, 59, 59),
     ]);
+  });
+
+  test("a constant variable lands in one cell", async () => {
+    const { block } = await scatter("sc c a if a == 3 | a == 4");
+    expect(block.xRange).toEqual([3, 4]);
+    expect(block.yRange).toEqual([3, 3]);
+    expect(block.series[0].cells.map((cell) => cell[1])).toEqual([0, 0]);
   });
 
   test("the session filter applies; an empty result reports no observations", async () => {
@@ -1028,11 +1071,7 @@ describe("scatter", () => {
       lhs: { kind: "var", name: "c" },
       rhs: { kind: "number", value: 2 },
     };
-    const some = await executeCommand("sc a c", ctx);
-    if (some.status !== "ok" || some.blocks[0].kind !== "scatter") {
-      throw new Error(JSON.stringify(some));
-    }
-    expect(some.blocks[0].n).toBe(3);
+    expect((await scatter("sc a c")).block.n).toBe(3);
 
     const none = await executeCommand("sc a c if a > 100", ctx);
     if (none.status !== "ok") throw new Error(none.error);
@@ -1046,27 +1085,29 @@ describe("scatter", () => {
     expect(outcome.error).toContain("scatter requires numeric or date");
   });
 
-  test("large inputs plot a random sample drawn after the filter", async () => {
+  test("large inputs stay bounded and keep a lone outlier", async () => {
     const driver = dbds.db as reltabDuckDB.DuckDBDriver;
+    // 200,000 points on a dense diagonal band, plus one far outlier
     await driver.runSqlQuery(
-      "CREATE TABLE scatter_big AS SELECT i::INTEGER AS x, (2 * i)::DOUBLE AS y FROM range(25000) t(i)"
+      `CREATE TABLE scatter_big AS
+       SELECT (i % 1000)::DOUBLE AS x, (i % 1000 + i % 7)::DOUBLE AS y
+       FROM range(200000) t(i)
+       UNION ALL SELECT 5000, -3000`
     );
     const bigCtx: CommandExecutionContext = {
       ...ctx,
       schema: await dbds.getTableSchema("scatter_big"),
       baseQuery: tableQuery("scatter_big"),
     };
-    const outcome = await executeCommand("sc y x if x >= 5000", bigCtx);
-    if (outcome.status !== "ok" || outcome.blocks[0].kind !== "scatter") {
-      throw new Error(JSON.stringify(outcome));
-    }
-    expect(outcome.sql).toContain("USING SAMPLE reservoir(10000 ROWS)");
-    const block = outcome.blocks[0];
-    expect(block.n).toBe(20000);
-    expect(block.plotted).toBe(10000);
-    const points = block.series[0].points;
-    expect(points).toHaveLength(10000);
-    expect(points.every(([x, y]) => x >= 5000 && y === 2 * x)).toBe(true);
+    const { block } = await scatter("sc y x", bigCtx);
+    expect(block.n).toBe(200001);
+    expect(block.xRange).toEqual([0, 5000]);
+    expect(block.yRange).toEqual([-3000, 1005]);
+    const cells = block.series[0].cells;
+    expect(cells.length).toBeLessThanOrEqual(block.gridX * block.gridY);
+    expect(cells.reduce((sum, cell) => sum + cell[2], 0)).toBe(200001);
+    // the outlier sits alone in the bottom-right cell
+    expect(cells).toContainEqual([block.gridX - 1, 0, 1]);
   });
 });
 

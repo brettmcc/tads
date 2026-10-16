@@ -97,7 +97,7 @@ prefixes shown in brackets are accepted, e.g. `sum` for `summarize`):
 | `keep` | `keep varlist` / `keep if expr` | Keep variables, or accumulate a session row filter. |
 | `drop` | `drop varlist` / `drop if expr` | Drop variables, or accumulate the inverse filter. |
 | `histogram` | `hist[ogram] var [if expr] [, bin(#)]` | Frequency histogram of a numeric variable. |
-| `scatter` | `sc[atter] yvar [yvar ...] xvar [if expr]` | Scatter plot of y variables against x; plots a random 10,000 points on larger data. |
+| `scatter` | `sc[atter] yvar [yvar ...] xvar [if expr]` | Scatter plot of y variables against x; every observation shows, however large the file. |
 
 Options may be abbreviated where unambiguous (`sum, d`, `corr x y, cov`,
 `distinct x, j`). `codebook`, `distinct`, and `duplicates` must be

@@ -33,7 +33,8 @@ import {
   HistogramPlan,
   ListPlan,
   planCommand,
-  SCATTER_POINT_LIMIT,
+  SCATTER_GRID_X,
+  SCATTER_GRID_Y,
   ScatterAxisKind,
   ScatterPlan,
   SumDetailPlan,
@@ -96,10 +97,17 @@ export type ResultBlock =
       yAxis: ScatterAxisKind;
       /** observations with x and at least one y non-missing */
       n: number;
-      /** observations plotted: all n, or a random sample of them */
-      plotted: number;
-      /** one series per y variable: its non-missing [x, y] pairs */
-      series: Array<{ variable: string; points: Array<[number, number]> }>;
+      /** data ranges the grid spans (dates as epoch milliseconds) */
+      xRange: [number, number];
+      yRange: [number, number];
+      /** grid size: cells across xRange and yRange */
+      gridX: number;
+      gridY: number;
+      /** per y variable, its occupied cells as [ix, iy, observations] */
+      series: Array<{
+        variable: string;
+        cells: Array<[number, number, number]>;
+      }>;
     };
 
 /** view-state update applied by grid commands */
@@ -744,29 +752,33 @@ async function runScatter(
   plan: ScatterPlan,
   ctx: CommandExecutionContext
 ): Promise<{ blocks: ResultBlock[]; sql: string }> {
-  const countRes = await ctx.runReadOnlySql(plan.countSql);
-  const n = asNumber((countRes.rows[0] ?? {}).n) ?? 0;
-  if (n === 0) {
+  const statsRes = await ctx.runReadOnlySql(plan.statsSql);
+  const stats: Row = statsRes.rows[0] ?? {};
+  const n = asNumber(stats.n) ?? 0;
+  const xMin = asNumber(stats.x_min);
+  const xMax = asNumber(stats.x_max);
+  const yMin = asNumber(stats.y_min);
+  const yMax = asNumber(stats.y_max);
+  if (n === 0 || xMin === null || xMax === null || yMin === null || yMax === null) {
     return {
       blocks: [{ kind: "text", text: "no observations" }],
-      sql: plan.countSql,
+      sql: plan.statsSql,
     };
   }
-  const pointsSql = plan.mkPointsSql(n > SCATTER_POINT_LIMIT);
-  const pointsRes = await ctx.runReadOnlySql(pointsSql);
+  const cellsSql = plan.mkCellsSql(xMin, xMax, yMin, yMax);
+  const cellsRes = await ctx.runReadOnlySql(cellsSql);
   const series = plan.yVariables.map((variable) => ({
     variable,
-    points: [] as Array<[number, number]>,
+    cells: [] as Array<[number, number, number]>,
   }));
-  for (const row of pointsRes.rows) {
-    const x = asNumber(row.x);
-    if (x === null) continue;
-    series.forEach((s, i) => {
-      const y = asNumber(row[`y${i}`]);
-      if (y !== null) {
-        s.points.push([x, y]);
-      }
-    });
+  for (const row of cellsRes.rows) {
+    const s = asNumber(row.s);
+    const ix = asNumber(row.ix);
+    const iy = asNumber(row.iy);
+    const c = asNumber(row.c);
+    if (s !== null && ix !== null && iy !== null && c !== null) {
+      series[s]?.cells.push([ix, iy, c]);
+    }
   }
   const block: ResultBlock = {
     kind: "scatter",
@@ -774,10 +786,13 @@ async function runScatter(
     xAxis: plan.xAxis,
     yAxis: plan.yAxis,
     n,
-    plotted: pointsRes.rows.length,
+    xRange: [xMin, xMax],
+    yRange: [yMin, yMax],
+    gridX: SCATTER_GRID_X,
+    gridY: SCATTER_GRID_Y,
     series,
   };
-  return { blocks: [block], sql: [plan.countSql, pointsSql].join(";\n\n") };
+  return { blocks: [block], sql: [plan.statsSql, cellsSql].join(";\n\n") };
 }
 
 async function runGrid(

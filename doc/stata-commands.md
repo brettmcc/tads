@@ -211,9 +211,14 @@ display formatting (grouping only from 10,000 up, so years read cleanly).
 `round(min(sqrt(N), 10*log10(N)))`.
 
 `scatter` uses an observation when x and at least one y variable are
-non-missing; each y variable plots only where it is non-missing itself. When
-more than 10,000 observations qualify, it plots a random sample of 10,000 and
-says so under the chart. The caption always reports the full N. Variables
+non-missing; each y variable plots only where it is non-missing itself. So
+that large files plot quickly without losing anything, the plot area is split
+into a fine grid (192 x 126 cells, about 2 pixels each) and DuckDB returns the
+occupied cells with their observation counts. Every observation, outliers
+included, lands in a drawn cell; cells holding more observations are drawn
+brighter. The result size stays bounded no matter how many rows there are, and
+at this resolution the plot looks the same as one drawn point by point. The
+caption reports N. Variables
 may be numeric or date/timestamp (with date axes), though the y variables
 must be all numeric or all dates. Graph options such as `msize()` are not
 supported.

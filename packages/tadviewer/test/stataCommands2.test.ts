@@ -20,7 +20,8 @@ import {
   negateExpr,
   planCommand,
   PlanContext,
-  SCATTER_POINT_LIMIT,
+  SCATTER_GRID_X,
+  SCATTER_GRID_Y,
   ScatterPlan,
   SumDetailPlan,
   SummarizePlan,
@@ -416,7 +417,7 @@ describe("list and histogram plans", () => {
 });
 
 describe("scatter plan", () => {
-  test("counts usable observations, then selects the points", () => {
+  test("ranges over the usable observations, then counts grid cells", () => {
     const p = plan("scatter price mpg d if mpg > 1") as ScatterPlan;
     expect(p).toMatchObject({
       kind: "scatter",
@@ -426,31 +427,45 @@ describe("scatter plan", () => {
       yAxis: "numeric",
     });
     const where = `WHERE ("mpg" > 1) AND "d" IS NOT NULL AND ("price" IS NOT NULL OR "mpg" IS NOT NULL)`;
-    expect(p.countSql).toContain("SELECT count(*) AS n");
-    expect(p.countSql).toContain(where);
-    const all = p.mkPointsSql(false);
-    expect(all).toContain(
-      `SELECT CAST(epoch_ms(CAST("d" AS TIMESTAMP)) AS DOUBLE) AS x,`
+    for (const sql of [p.statsSql, p.mkCellsSql(0, 10, 0, 1)]) {
+      expect(sql).toContain(
+        `SELECT CAST(epoch_ms(CAST("d" AS TIMESTAMP)) AS DOUBLE) AS x,`
+      );
+      expect(sql).toContain(`CAST("price" AS DOUBLE) AS y0,`);
+      expect(sql).toContain(`CAST("mpg" AS DOUBLE) AS y1`);
+      expect(sql).toContain(where);
+    }
+    expect(p.statsSql).toContain("least(min(y0), min(y1)) AS y_min,");
+    expect(p.statsSql).toContain("greatest(max(y0), max(y1)) AS y_max");
+
+    const cells = p.mkCellsSql(0, 192, 10, 136);
+    // one cell per unit on both axes; the top edge folds into the last cell
+    expect(cells).toContain(
+      `LEAST(CAST(floor((x - 0) / 1) AS INTEGER), ${SCATTER_GRID_X - 1}) AS ix`
     );
-    expect(all).toContain(`CAST("price" AS DOUBLE) AS y0,`);
-    expect(all).toContain(`CAST("mpg" AS DOUBLE) AS y1`);
-    expect(all).toContain(where);
-    expect(all).not.toContain("SAMPLE");
-    // the sample wraps the filtered rows, so it is drawn after the WHERE
-    const sampled = p.mkPointsSql(true);
-    expect(sampled).toContain(all.split("\n").map((l) => "  " + l).join("\n"));
-    expect(sampled).toMatch(
-      new RegExp(
-        `\\)\\nUSING SAMPLE reservoir\\(${SCATTER_POINT_LIMIT} ROWS\\) REPEATABLE \\(1\\)$`
-      )
+    expect(cells).toContain(
+      `unnest([CASE WHEN y0 IS NOT NULL THEN LEAST(CAST(floor((y0 - 10) / 1) AS INTEGER), ${
+        SCATTER_GRID_Y - 1
+      }) END, CASE WHEN y1 IS NOT NULL THEN`
     );
+    expect(cells).toContain("unnest([0, 1]) AS s,");
+    expect(cells).toContain("GROUP BY s, ix, iy");
   });
 
-  test("a single y needs no OR", () => {
+  test("a single y needs no OR, least, or unnest", () => {
     const p = plan("sc price mpg") as ScatterPlan;
-    expect(p.countSql).toContain(
+    expect(p.statsSql).toContain(
       `WHERE "mpg" IS NOT NULL AND "price" IS NOT NULL`
     );
+    expect(p.statsSql).toContain("min(y0) AS y_min,");
+    const cells = p.mkCellsSql(0, 1, 0, 1);
+    expect(cells).toContain("0 AS s,");
+    expect(cells).not.toContain("unnest");
+  });
+
+  test("a constant variable puts every observation in cell 0", () => {
+    const p = plan("sc price mpg") as ScatterPlan;
+    expect(p.mkCellsSql(3, 3, 0, 1)).toContain("floor((x - 3) / 1)");
   });
 
   test("rejects strings and mixed numeric/date y variables", () => {

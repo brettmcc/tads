@@ -57,8 +57,12 @@
  *   count is Stata's min(sqrt(N), 10*log10(N)).
  * - scatter: y variables against one x variable (numeric or date). An
  *   observation counts when x and at least one y are non-missing; each
- *   y series plots its own non-missing pairs. Beyond SCATTER_POINT_LIMIT
- *   observations a uniform random sample of that many is plotted.
+ *   y series plots its own non-missing pairs. Rather than every point,
+ *   the plan returns the occupied cells of a SCATTER_GRID_X x
+ *   SCATTER_GRID_Y grid over the data ranges (about 2px per cell), with
+ *   observation counts: every observation lands in a drawn cell, so
+ *   outliers always show, and the result size is bounded however many
+ *   rows there are.
  *
  * By prefix (summarize, tabulate, correlate, distinct, count, list): the
  * plan carries a ByGroupsPlan listing the groups, and the command's own
@@ -360,8 +364,9 @@ export interface HistogramPlan {
   mkBinsSql(minVal: number, binWidth: number, binCount: number): string;
 }
 
-/** most observations a scatter plots; beyond this it plots a sample */
-export const SCATTER_POINT_LIMIT = 10000;
+/** scatter grid size: cells across the x and y data ranges */
+export const SCATTER_GRID_X = 192;
+export const SCATTER_GRID_Y = 126;
 
 /** how a scatter axis is scaled and labeled */
 export type ScatterAxisKind = "numeric" | "date" | "timestamp";
@@ -372,13 +377,17 @@ export interface ScatterPlan {
   xVariable: string;
   xAxis: ScatterAxisKind;
   yAxis: ScatterAxisKind;
-  /** phase 1: n, the observations with x and at least one y non-missing */
-  countSql: string;
   /**
-   * phase 2: the points as DOUBLE columns x, y0, y1, ... (dates as epoch
-   * milliseconds); with `sample`, a random SCATTER_POINT_LIMIT of them
+   * phase 1: n (observations with x and at least one y non-missing) and
+   * the x range and joint y range over them, as DOUBLE (dates as epoch
+   * milliseconds)
    */
-  mkPointsSql(sample: boolean): string;
+  statsSql: string;
+  /**
+   * phase 2: the occupied grid cells over those ranges, one row per
+   * series s (index into yVariables), cell ix, iy, with count c
+   */
+  mkCellsSql(xMin: number, xMax: number, yMin: number, yMax: number): string;
 }
 
 export type CommandPlan =
@@ -1511,36 +1520,85 @@ function planScatter(
   const yNotNull = cmd.yVariables.map((v) => `${q(v)} IS NOT NULL`);
   const anyY =
     yNotNull.length === 1 ? yNotNull[0] : `(${yNotNull.join(" OR ")})`;
-  const from = fromClause(ctx);
   const where = whereClause(
     cmd.filter,
     ctx,
     `${q(cmd.xVariable)} IS NOT NULL AND ${anyY}`
   );
-
-  const countSql = [`SELECT count(*) AS n`, from, where].join("\n");
-  const pointsSql = [
-    ...selectList([
-      `${valueExpr(cmd.xVariable, xAxis)} AS x`,
-      ...cmd.yVariables.map((v, i) => `${valueExpr(v, yKinds[i])} AS y${i}`),
-    ]),
-    from,
-    where,
-  ].join("\n");
-  const mkPointsSql = (sample: boolean): string => {
-    if (!sample) {
-      return pointsSql;
-    }
-    const indented = pointsSql
+  // the usable observations as columns x, y0, y1, ...
+  const pointsFrom = [
+    `FROM (`,
+    ...[
+      ...selectList([
+        `${valueExpr(cmd.xVariable, xAxis)} AS x`,
+        ...cmd.yVariables.map(
+          (v, i) => `${valueExpr(v, yKinds[i])} AS y${i}`
+        ),
+      ]),
+      fromClause(ctx),
+      where,
+    ]
+      .join("\n")
       .split("\n")
-      .map((line) => "  " + line)
-      .join("\n");
+      .map((line) => "  " + line),
+    `)`,
+  ].join("\n");
+
+  const ys = cmd.yVariables.map((_, i) => `y${i}`);
+  const fn = (agg: string, combine: string) =>
+    ys.length === 1
+      ? `${agg}(y0)`
+      : `${combine}(${ys.map((y) => `${agg}(${y})`).join(", ")})`;
+  const statsSql = [
+    ...selectList([
+      `count(*) AS n`,
+      `min(x) AS x_min`,
+      `max(x) AS x_max`,
+      `${fn("min", "least")} AS y_min`,
+      `${fn("max", "greatest")} AS y_max`,
+    ]),
+    pointsFrom,
+  ].join("\n");
+
+  const mkCellsSql = (
+    xMin: number,
+    xMax: number,
+    yMin: number,
+    yMax: number
+  ): string => {
+    // a constant variable has zero width; any width then puts it in cell 0
+    const cellIndex = (v: string, lo: number, hi: number, cells: number) => {
+      const width = hi > lo ? (hi - lo) / cells : 1;
+      return `LEAST(CAST(floor((${v} - ${numberLiteral(
+        lo
+      )}) / ${numberLiteral(width)}) AS INTEGER), ${cells - 1})`;
+    };
+    const iy = (y: string) =>
+      `CASE WHEN ${y} IS NOT NULL THEN ${cellIndex(
+        y,
+        yMin,
+        yMax,
+        SCATTER_GRID_Y
+      )} END`;
+    const ix = `${cellIndex("x", xMin, xMax, SCATTER_GRID_X)} AS ix`;
+    const cellCols =
+      ys.length === 1
+        ? [`0 AS s`, ix, `${iy("y0")} AS iy`]
+        : [
+            `unnest([${ys.map((_, i) => i).join(", ")}]) AS s`,
+            ix,
+            `unnest([${ys.map(iy).join(", ")}]) AS iy`,
+          ];
     return [
-      `SELECT *`,
+      `SELECT s, ix, iy, count(*) AS c`,
       `FROM (`,
-      indented,
+      ...[...selectList(cellCols), pointsFrom]
+        .join("\n")
+        .split("\n")
+        .map((line) => "  " + line),
       `)`,
-      `USING SAMPLE reservoir(${SCATTER_POINT_LIMIT} ROWS) REPEATABLE (1)`,
+      `WHERE iy IS NOT NULL`,
+      `GROUP BY s, ix, iy`,
     ].join("\n");
   };
   return {
@@ -1549,8 +1607,8 @@ function planScatter(
     xVariable: cmd.xVariable,
     xAxis,
     yAxis,
-    countSql,
-    mkPointsSql,
+    statsSql,
+    mkCellsSql,
   };
 }
 

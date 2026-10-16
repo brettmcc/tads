@@ -10,12 +10,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
 import {
-  CanvasGroup,
-  CanvasPoint,
   VictoryAxis,
   VictoryBar,
   VictoryChart,
-  VictoryScatter,
+  VictoryContainer,
   VictoryTheme,
 } from "victory";
 import { AppState } from "../AppState";
@@ -270,102 +268,194 @@ const SCATTER_COLORS = [
 type ScatterBlockData = ResultBlock & { kind: "scatter" };
 type ScatterAxis = ScatterBlockData["xAxis"];
 
+/** chart geometry in CSS px; the points canvas covers the plot area */
+const SCATTER_CHART = {
+  width: 480,
+  height: 300,
+  padding: { top: 8, bottom: 40, left: 72, right: 24 },
+};
+const SCATTER_PLOT_W =
+  SCATTER_CHART.width -
+  SCATTER_CHART.padding.left -
+  SCATTER_CHART.padding.right;
+const SCATTER_PLOT_H =
+  SCATTER_CHART.height -
+  SCATTER_CHART.padding.top -
+  SCATTER_CHART.padding.bottom;
+
 /**
- * Dates arrive as epoch milliseconds of their wall-clock value. Shift them
- * into a local Date showing the same wall clock, so the time scale's
- * (local) ticks land on calendar boundaries.
+ * Plot coordinate of a value. Dates arrive as epoch milliseconds of their
+ * wall-clock value; they are shifted to the local Date showing the same
+ * wall clock, so the time scale's (local) ticks land on calendar
+ * boundaries.
  */
-function wallClockDate(ms: number): Date {
-  return new Date(ms + new Date(ms).getTimezoneOffset() * 60000);
+function scatterPlotValue(v: number, axis: ScatterAxis): number {
+  return axis === "numeric"
+    ? v
+    : v + new Date(v).getTimezoneOffset() * 60000;
 }
 
-function scatterValue(v: number, axis: ScatterAxis): number | Date {
-  return axis === "numeric" ? v : wallClockDate(v);
+/** axis domain in plot coordinates: the data range plus a 3% margin */
+function scatterDomain(
+  range: [number, number],
+  axis: ScatterAxis
+): [number, number] {
+  const lo = scatterPlotValue(range[0], axis);
+  const hi = scatterPlotValue(range[1], axis);
+  const pad =
+    hi > lo
+      ? (hi - lo) * 0.03
+      : axis === "numeric"
+      ? Math.max(Math.abs(lo) * 0.1, 1)
+      : 86400000;
+  return [lo - pad, hi + pad];
 }
 
+/**
+ * Date tick labels at the coarsest precision that tells the ticks apart:
+ * years when every tick is on Jan 1, months when every tick is on the
+ * 1st, else days (plus the time of day for timestamps off midnight).
+ */
 function scatterTickFormat(axis: ScatterAxis) {
   if (axis === "numeric") {
     return undefined;
   }
   const p = (n: number) => String(n).padStart(2, "0");
-  return (t: number | Date) => {
+  return (t: number | Date, _i: number, ticks: Array<number | Date>) => {
+    const dates = ticks.map((v) => new Date(v));
     const d = new Date(t);
+    const midnight = (x: Date) =>
+      x.getHours() === 0 && x.getMinutes() === 0 && x.getSeconds() === 0;
+    const allMidnight = dates.every(midnight);
+    if (allMidnight && dates.every((x) => x.getDate() === 1)) {
+      return dates.every((x) => x.getMonth() === 0)
+        ? String(d.getFullYear())
+        : `${d.getFullYear()}-${p(d.getMonth() + 1)}`;
+    }
     const day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-    const midnight =
-      d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
-    return axis === "date" || midnight
+    return axis === "date" || allMidnight
       ? day
       : `${day} ${p(d.getHours())}:${p(d.getMinutes())}`;
   };
 }
 
+/**
+ * Scatter plot of grid cells: Victory draws the axes over a fixed domain,
+ * and the occupied cells are painted onto a canvas covering the plot area
+ * (one dot per cell, brighter where the cell holds more observations).
+ */
 const ScatterBlock: React.FunctionComponent<{ block: ScatterBlockData }> = ({
   block,
 }) => {
-  const series = useMemo(
-    () =>
-      block.series.map((s) => ({
-        variable: s.variable,
-        data: s.points.map(([x, y]) => ({
-          x: scatterValue(x, block.xAxis),
-          y: scatterValue(y, block.yAxis),
-        })),
-      })),
-    [block]
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const xDomain = scatterDomain(block.xRange, block.xAxis);
+  const yDomain = scatterDomain(block.yRange, block.yAxis);
+  const maxCount = block.series.reduce(
+    (m, s) => s.cells.reduce((m2, cell) => Math.max(m2, cell[2]), m),
+    0
   );
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const g = canvas?.getContext("2d");
+    if (canvas == null || g == null) {
+      return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(SCATTER_PLOT_W * dpr);
+    canvas.height = Math.round(SCATTER_PLOT_H * dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, SCATTER_PLOT_W, SCATTER_PLOT_H);
+    const cellCount = block.series.reduce((m, s) => m + s.cells.length, 0);
+    // dot radius: Stata-sized for sparse plots, about one cell when dense
+    const radius = cellCount <= 500 ? 2.5 : cellCount <= 3000 ? 2 : 1.6;
+    const xWidth = (block.xRange[1] - block.xRange[0]) / block.gridX;
+    const yWidth = (block.yRange[1] - block.yRange[0]) / block.gridY;
+    const logMax = Math.log(maxCount);
+    block.series.forEach((s, si) => {
+      g.fillStyle = SCATTER_COLORS[si % SCATTER_COLORS.length];
+      for (const [ix, iy, count] of s.cells) {
+        const x = scatterPlotValue(
+          block.xRange[0] + (ix + 0.5) * xWidth,
+          block.xAxis
+        );
+        const y = scatterPlotValue(
+          block.yRange[0] + (iy + 0.5) * yWidth,
+          block.yAxis
+        );
+        const px =
+          ((x - xDomain[0]) / (xDomain[1] - xDomain[0])) * SCATTER_PLOT_W;
+        const py =
+          SCATTER_PLOT_H -
+          ((y - yDomain[0]) / (yDomain[1] - yDomain[0])) * SCATTER_PLOT_H;
+        g.globalAlpha =
+          maxCount > 1 ? 0.65 + (0.35 * Math.log(count)) / logMax : 0.85;
+        g.beginPath();
+        g.arc(px, py, radius, 0, 2 * Math.PI);
+        g.fill();
+      }
+    });
+  }, [block]);
   const axisStyle = {
     axis: { stroke: "#343842" },
     ticks: { stroke: "#343842" },
     tickLabels: { fill: "#aeb5c2" },
     grid: { stroke: "transparent" },
   };
-  const scale = (axis: ScatterAxis) => (axis === "numeric" ? "linear" : "time");
+  const isTime = (axis: ScatterAxis) => axis !== "numeric";
+  const domainOf = (d: [number, number], axis: ScatterAxis) =>
+    isTime(axis) ? d.map((v) => new Date(v)) : d;
   const single = block.series.length === 1;
-  // marker radius: Stata-sized for small data, finer as points pile up
-  const size = block.plotted <= 500 ? 2.5 : block.plotted <= 3000 ? 1.8 : 1.2;
   return (
     <div className="command-scatter" data-testid="scatter-block">
-      <VictoryChart
-        theme={VictoryTheme.material}
-        scale={{ x: scale(block.xAxis), y: scale(block.yAxis) }}
-        domainPadding={8}
-        width={480}
-        height={300}
-        padding={{ top: 8, bottom: 40, left: 72, right: 24 }}
+      <div
+        className="scatter-plot"
+        style={{ width: SCATTER_CHART.width, height: SCATTER_CHART.height }}
       >
-        <VictoryAxis
-          label={block.xVariable}
-          tickFormat={scatterTickFormat(block.xAxis)}
-          style={{
-            ...axisStyle,
-            axisLabel: { padding: 26, fill: "#aeb5c2" },
+        <VictoryChart
+          theme={VictoryTheme.material}
+          scale={{
+            x: isTime(block.xAxis) ? "time" : "linear",
+            y: isTime(block.yAxis) ? "time" : "linear",
           }}
-        />
-        <VictoryAxis
-          dependentAxis
-          label={single ? block.series[0].variable : undefined}
-          tickFormat={scatterTickFormat(block.yAxis)}
-          style={{
-            ...axisStyle,
-            axisLabel: { padding: 56, fill: "#aeb5c2" },
+          domain={{
+            x: domainOf(xDomain, block.xAxis) as [number, number],
+            y: domainOf(yDomain, block.yAxis) as [number, number],
           }}
-        />
-        {series.map((s, i) => (
-          <VictoryScatter
-            key={s.variable}
-            data={s.data}
-            size={size}
-            groupComponent={<CanvasGroup />}
-            dataComponent={<CanvasPoint />}
+          width={SCATTER_CHART.width}
+          height={SCATTER_CHART.height}
+          padding={SCATTER_CHART.padding}
+          containerComponent={<VictoryContainer responsive={false} />}
+        >
+          <VictoryAxis
+            label={block.xVariable}
+            tickFormat={scatterTickFormat(block.xAxis)}
+            tickCount={isTime(block.xAxis) ? 5 : undefined}
             style={{
-              data: {
-                fill: SCATTER_COLORS[i % SCATTER_COLORS.length],
-                opacity: 0.7,
-              },
+              ...axisStyle,
+              axisLabel: { padding: 26, fill: "#aeb5c2" },
             }}
           />
-        ))}
-      </VictoryChart>
+          <VictoryAxis
+            dependentAxis
+            label={single ? block.series[0].variable : undefined}
+            tickFormat={scatterTickFormat(block.yAxis)}
+            style={{
+              ...axisStyle,
+              axisLabel: { padding: 56, fill: "#aeb5c2" },
+            }}
+          />
+        </VictoryChart>
+        <canvas
+          ref={canvasRef}
+          className="scatter-points"
+          style={{
+            left: SCATTER_CHART.padding.left,
+            top: SCATTER_CHART.padding.top,
+            width: SCATTER_PLOT_W,
+            height: SCATTER_PLOT_H,
+          }}
+        />
+      </div>
       {!single && (
         <div className="scatter-legend">
           {block.series.map((s, i) => (
@@ -382,11 +472,8 @@ const ScatterBlock: React.FunctionComponent<{ block: ScatterBlockData }> = ({
         </div>
       )}
       <div className="command-result-text">
-        {block.plotted < block.n
-          ? `random sample of ${block.plotted.toLocaleString(
-              "en-US"
-            )} of N = ${block.n.toLocaleString("en-US")} observations`
-          : `N = ${block.n.toLocaleString("en-US")}`}
+        N = {block.n.toLocaleString("en-US")}
+        {maxCount > 1 ? "; brighter points stand for more observations" : ""}
       </div>
     </div>
   );

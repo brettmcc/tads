@@ -468,7 +468,7 @@ test("scatter draws its points on a canvas", async () => {
   expect(await block.locator(".command-result-text").textContent()).toBe(
     "N = 6"
   );
-  // one canvas per series, each with painted pixels
+  // both series paint onto the one points canvas
   const painted = await block.evaluate((el) =>
     Array.from(el.querySelectorAll("canvas")).map((c) => {
       const data = c
@@ -479,6 +479,6 @@ test("scatter draws its points on a canvas", async () => {
       return n;
     })
   );
-  expect(painted).toHaveLength(2);
-  expect(painted.every((n) => n > 0)).toBe(true);
+  expect(painted).toHaveLength(1);
+  expect(painted[0]).toBeGreaterThan(0);
 }, 90000);
