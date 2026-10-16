@@ -257,6 +257,55 @@ describe("CommandBar", () => {
     );
   });
 
+  test("typed input and history are remembered per dataset", async () => {
+    const stateRef = renderHarness();
+    const firstView = mutableGet(stateRef).viewState;
+    const switchTo = (view: ViewState) =>
+      act(() => {
+        update(stateRef, (st) => st.set("viewState", view) as AppState);
+      });
+    const otherView = firstView.set("dsPath", {
+      ...firstView.dsPath,
+      path: ["other"],
+    }) as ViewState;
+    const inputEl = () =>
+      screen.getByTestId("command-input") as HTMLInputElement;
+
+    let input = typeCommand("sum a");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await screen.findByTestId("result-entry");
+    typeCommand("tab s");
+
+    switchTo(otherView);
+    expect(inputEl().value).toBe("");
+    // history from the first dataset is not recalled here
+    fireEvent.keyDown(inputEl(), { key: "ArrowUp" });
+    expect(inputEl().value).toBe("");
+    input = typeCommand("sum nope");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await screen.findByTestId("command-bar-error");
+
+    switchTo(firstView);
+    expect(inputEl().value).toBe("tab s");
+    expect(screen.queryByTestId("command-bar-error")).toBeNull();
+    fireEvent.keyDown(inputEl(), { key: "ArrowUp" });
+    expect(inputEl().value).toBe("sum a");
+    fireEvent.keyDown(inputEl(), { key: "ArrowUp" });
+    expect(inputEl().value).toBe("sum a");
+    fireEvent.keyDown(inputEl(), { key: "ArrowDown" });
+    expect(inputEl().value).toBe("tab s");
+
+    switchTo(otherView);
+    expect(inputEl().value).toBe("sum nope");
+    expect(screen.getByTestId("command-bar-error").textContent).toContain(
+      "unknown variable 'nope'"
+    );
+  });
+
   test("PageUp/PageDown step through the whole command history", async () => {
     renderHarness();
     let input = typeCommand("sum a");

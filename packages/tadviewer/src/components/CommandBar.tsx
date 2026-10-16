@@ -1,6 +1,11 @@
 /**
  * Stata-style command bar: a single-line input with Enter-to-execute,
  * up/down command history, and a toggle for the results pane.
+ *
+ * Command-line memory is per dataset: switching datasets stashes the
+ * typed input (and any error shown for it) and restores whatever was
+ * last typed against the newly shown dataset, and up/down history only
+ * recalls commands run against the current dataset.
  */
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +13,7 @@ import { Button } from "@blueprintjs/core";
 import { StateRef } from "oneref";
 import { AppState } from "../AppState";
 import * as commandActions from "../commandActions";
+import { datasetKey } from "../commandState";
 
 export interface CommandBarProps {
   appState: AppState;
@@ -95,6 +101,12 @@ interface CompletionMenu {
   index: number;
 }
 
+/** command-line state stashed for a dataset that isn't being shown */
+interface StashedCommandLine {
+  input: string;
+  error: string | null;
+}
+
 export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
   appState,
   stateRef,
@@ -115,10 +127,35 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
     selectedItemRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [completionMenu]);
 
+  const dsKey = appState.viewState ? datasetKey(appState.viewState.dsPath) : "";
+  const stashRef = useRef(new Map<string, StashedCommandLine>());
+  const shownKeyRef = useRef(dsKey);
+  const liveLineRef = useRef<StashedCommandLine>({ input: "", error: null });
+  liveLineRef.current = { input: inputValue, error: lastError };
+  useEffect(() => {
+    if (shownKeyRef.current === dsKey) {
+      return;
+    }
+    const stash = stashRef.current;
+    stash.set(shownKeyRef.current, liveLineRef.current);
+    const restored = stash.get(dsKey) ?? { input: "", error: null };
+    stash.delete(dsKey);
+    shownKeyRef.current = dsKey;
+    setInputValue(restored.input);
+    setLastError(restored.error);
+    setHistIndex(null);
+    draftRef.current = "";
+    setCompletionMenu(null);
+  }, [dsKey]);
+
   const { commandRunning, commandResults } = appState;
   const history = useMemo(
-    () => commandResults.toArray().map((e) => e.command),
-    [commandResults]
+    () =>
+      commandResults
+        .toArray()
+        .filter((e) => e.datasetKey === undefined || e.datasetKey === dsKey)
+        .map((e) => e.command),
+    [commandResults, dsKey]
   );
   const { baseSchema } = appState.viewState;
   const { sessionColumns, showRecordCount } = appState;
@@ -137,8 +174,23 @@ export const CommandBar: React.FunctionComponent<CommandBarProps> = ({
       return;
     }
     setLastError(null);
+    const runKey = dsKey;
     const entry = await commandActions.runCommandLine(inputValue, stateRef);
     if (entry == null) {
+      return;
+    }
+    if (shownKeyRef.current !== runKey) {
+      // the dataset was switched mid-run: settle the stashed line of the
+      // dataset the command ran against, leaving the shown one alone
+      const stashed = stashRef.current.get(runKey);
+      if (stashed !== undefined) {
+        stashRef.current.set(
+          runKey,
+          entry.status === "error"
+            ? { ...stashed, error: entry.error ?? "command failed" }
+            : { input: "", error: null }
+        );
+      }
       return;
     }
     if (entry.status === "error") {

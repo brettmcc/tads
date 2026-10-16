@@ -3,6 +3,7 @@
  * log of command results, kept separate from saved Tad view state.
  */
 
+import { DataSourcePath } from "reltab";
 import { CommandKind, CommandOutcome, ResultBlock } from "./stataCommand";
 
 export interface CommandResultEntry {
@@ -17,6 +18,17 @@ export interface CommandResultEntry {
   status: "ok" | "error";
   output?: ResultBlock[];
   error?: string;
+  /** datasetKey of the dataset the command ran against */
+  datasetKey?: string;
+}
+
+/**
+ * Stable identity for an open dataset, used to scope command-line
+ * memory (draft input and up/down history) to the dataset it was typed
+ * against.
+ */
+export function datasetKey(dsPath: DataSourcePath): string {
+  return JSON.stringify(dsPath);
 }
 
 let entrySeq = 0;
@@ -38,11 +50,13 @@ export function resetEntryIds(): void {
 export function mkResultEntry(
   outcome: CommandOutcome,
   startedAt: string,
-  elapsedMs: number
+  elapsedMs: number,
+  dsKey?: string
 ): CommandResultEntry {
   if (outcome.status === "ok") {
     return {
       id: nextEntryId(),
+      datasetKey: dsKey,
       command: outcome.command,
       kind: outcome.kind,
       startedAt,
@@ -60,6 +74,7 @@ export function mkResultEntry(
     sql: "",
     status: "error",
     error: outcome.error,
+    datasetKey: dsKey,
   };
 }
 

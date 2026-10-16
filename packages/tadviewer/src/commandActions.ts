@@ -9,6 +9,7 @@ import { FilterExp, Schema } from "reltab";
 import { AppState } from "./AppState";
 import {
   CommandResultEntry,
+  datasetKey,
   entryAutoOpensPane,
   mkResultEntry,
 } from "./commandState";
@@ -138,7 +139,12 @@ export async function runCommandLine(
       applyGrid: (gridUpdate) => applyGridToView(stateRef, gridUpdate),
     };
     const outcome = await executeCommand(trimmed, ctx);
-    const entry = mkResultEntry(outcome, startedAt, Date.now() - t0);
+    const entry = mkResultEntry(
+      outcome,
+      startedAt,
+      Date.now() - t0,
+      datasetKey(viewState.dsPath)
+    );
     appendEntry(stateRef, entry);
     return entry;
   } finally {
