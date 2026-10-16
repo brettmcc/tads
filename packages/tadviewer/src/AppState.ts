@@ -60,6 +60,13 @@ export interface AppStateProps {
    * button flashes before the dataset appears.
    */
   initialLoadPending: boolean;
+  /**
+   * Number of dataset opens in flight. Opens can overlap (e.g. a second
+   * File > Open while the first is still importing), so this is a count:
+   * whichever open finishes first mustn't take the spinner down under the
+   * other.
+   */
+  pendingOpens: number;
   activity: Activity;
   showRecordCount: boolean;
 
@@ -97,6 +104,7 @@ const defaultAppStateProps: AppStateProps = {
   viewConfirmSourcePath: null,
   appLoadingTimer: new Timer(),
   initialLoadPending: false,
+  pendingOpens: 0,
   activity: "None",
   showRecordCount: true,
   commandResults: Immutable.List<CommandResultEntry>(),
@@ -125,6 +133,7 @@ export class AppState extends Immutable.Record(defaultAppStateProps) {
   public readonly viewConfirmSourcePath!: DataSourcePath | null;
   public readonly appLoadingTimer!: Timer;
   public readonly initialLoadPending!: boolean;
+  public readonly pendingOpens!: number;
   public readonly activity!: Activity;
   public readonly showRecordCount!: boolean;
   public readonly commandResults!: Immutable.List<CommandResultEntry>;

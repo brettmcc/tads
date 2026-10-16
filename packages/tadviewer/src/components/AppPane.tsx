@@ -77,7 +77,7 @@ const handleExportProgressDialogClose = (stateRef: StateRef<AppState>) => {
 const handleViewConfirmDialogReplace = async (stateRef: StateRef<AppState>) => {
   const appState = mutableGet(stateRef);
   actions.setViewConfirmDialogOpen(false, null, stateRef);
-  actions.replaceCurrentView(appState.viewConfirmSourcePath!, stateRef);
+  actions.openReplacingCurrentView(appState.viewConfirmSourcePath!, stateRef);
 };
 
 const handleViewConfirmDialogNewWindow = (
@@ -505,7 +505,7 @@ export const AppPane: React.FunctionComponent<AppPaneProps> = ({
     const datasetLoading =
       !appState.initialized ||
       appState.initialLoadPending ||
-      appState.appLoadingTimer.running ||
+      appState.pendingOpens > 0 ||
       (viewState !== null &&
         viewState.dataView == null &&
         !viewState.loadFailed);

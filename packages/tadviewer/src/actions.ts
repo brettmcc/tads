@@ -60,14 +60,31 @@ export async function startAppLoadingTimer(
   );
 }
 
-export async function stopAppLoadingTimer(
-  stateRef: StateRef<AppState>
+/**
+ * Run a dataset open with the loading state up, counted in pendingOpens so
+ * overlapping opens keep it up until the last of them settles.
+ */
+async function withPendingOpen(
+  stateRef: StateRef<AppState>,
+  open: () => Promise<void>
 ): Promise<void> {
   update(
     stateRef,
     (st: AppState): AppState =>
-      st.set("appLoadingTimer", st.appLoadingTimer.stop()) as AppState
+      st.set("pendingOpens", st.pendingOpens + 1) as AppState
   );
+  await startAppLoadingTimer(stateRef);
+  try {
+    await open();
+  } finally {
+    update(stateRef, (st: AppState): AppState => {
+      const pendingOpens = st.pendingOpens - 1;
+      const next = st.set("pendingOpens", pendingOpens) as AppState;
+      return pendingOpens > 0
+        ? next
+        : (next.set("appLoadingTimer", st.appLoadingTimer.stop()) as AppState);
+    });
+  }
 }
 
 export async function setInitialLoadPending(
@@ -189,14 +206,19 @@ export const openDataSourcePath = async (
   if (modifiedViewParams) {
     setViewConfirmDialogOpen(true, path, stateRef);
   } else {
-    try {
-      await startAppLoadingTimer(stateRef);
-      await replaceCurrentView(path, stateRef, viewParams);
-    } finally {
-      stopAppLoadingTimer(stateRef);
-    }
+    await openReplacingCurrentView(path, stateRef, viewParams);
   }
 };
+
+/** replaceCurrentView, with the loading state shown while it runs */
+export const openReplacingCurrentView = (
+  path: DataSourcePath,
+  stateRef: StateRef<AppState>,
+  viewParams?: ViewParams
+): Promise<void> =>
+  withPendingOpen(stateRef, () =>
+    replaceCurrentView(path, stateRef, viewParams)
+  );
 
 // helper to hoist a ViewParams => ViewParams fn to an AppState => AppState
 // Always resets the viewport
