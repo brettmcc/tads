@@ -84,10 +84,10 @@ by group, sort: distinct id, joint
   all fail the `if` is still shown, with N = 0 (or, for `list`, nothing).
 - Variables in parentheses (`bysort g (x):`) only order observations within
   each group; they matter for `list`.
-- `keep if` and `drop if` accept the prefix, with the same effect as
-  without it (there is no `_n`/`_N` to make the result depend on the group).
-- Other commands, and `keep`/`drop` with a varlist, are rejected with
-  Stata's "may not be combined with by" message.
+- Other commands are rejected with Stata's "may not be combined with by"
+  message. That includes `keep if` and `drop if`: Stata accepts them under
+  `by`, but without `_n`/`_N` the prefix cannot change their result, so Tads
+  reports an error instead of silently ignoring it.
 - At most 500 groups are reported (the first in sort order); a note gives
   the total. `list` shows up to 200 rows per group and numbers them within
   the group.

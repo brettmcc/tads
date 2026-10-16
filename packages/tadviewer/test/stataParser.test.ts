@@ -499,14 +499,6 @@ describe("by prefix", () => {
     expect(parseCommand("sum a")).not.toHaveProperty("by");
   });
 
-  test("keep if / drop if accept the prefix", () => {
-    expect(parseCommand("by c: keep if a > 1")).toMatchObject({
-      kind: "keep",
-      by: { variables: [v("c", 3)] },
-    });
-    expect(parseCommand("bys c: drop if a > 1").kind).toBe("drop");
-  });
-
   const byErrors: Array<[string, string | RegExp]> = [
     ["by: sum a", "by requires a varlist"],
     ["bysort : sum a", "bysort requires a varlist"],
@@ -521,7 +513,12 @@ describe("by prefix", () => {
     ["by c: histogram a", "histogram may not be combined with by"],
     ["by c: sort a", "sort may not be combined with by"],
     ["by c: bro", "browse may not be combined with by"],
-    ["by c: keep a", "keep varlist may not be combined with by; use keep if"],
+    ["by c: keep a", "keep may not be combined with by"],
+    [
+      "by c: keep if a > 1",
+      "keep may not be combined with by: without _n/_N the prefix has no effect; use keep if without it",
+    ],
+    ["bys c: drop if a > 1", "drop may not be combined with by"],
     ["by c: by a: sum", "unknown command 'by'"],
   ];
   test.each(byErrors)("by error: %s", (input, msgPart) => {

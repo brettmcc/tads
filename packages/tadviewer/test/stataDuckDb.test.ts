@@ -1336,15 +1336,12 @@ describe("by prefix", () => {
     ]);
   });
 
-  test("by: keep if behaves like keep if", async () => {
+  test("by: keep if is rejected and leaves the session alone", async () => {
     const outcome = await executeCommand("by c: keep if a > 1", ctx);
-    expect(outcome.status).toBe("ok");
-    expect(lastGrid!.sessionFilter).toEqual({
-      kind: "cmp",
-      op: ">",
-      lhs: { kind: "var", name: "a" },
-      rhs: { kind: "number", value: 1 },
-    });
+    expect(outcome.status).toBe("error");
+    if (outcome.status !== "error") return;
+    expect(outcome.error).toContain("the prefix has no effect");
+    expect(lastGrid).toBeNull();
   });
 
   test("non-byable commands are rejected", async () => {

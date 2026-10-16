@@ -125,7 +125,11 @@ export interface ByPrefix {
   sortVariables: string[];
 }
 
-/** commands Stata accepts under a by prefix */
+/**
+ * commands that run per group under a by prefix: those Stata accepts,
+ * minus keep/drop if, where without _n/_N the prefix could have no
+ * effect (so it is rejected rather than silently ignored)
+ */
 export const BYABLE_COMMANDS: ReadonlySet<string> = new Set([
   "summarize",
   "tabulate",
@@ -133,8 +137,6 @@ export const BYABLE_COMMANDS: ReadonlySet<string> = new Set([
   "distinct",
   "list",
   "count",
-  "keep",
-  "drop",
 ]);
 
 export type StataCommand = StataCommandBody & { by?: ByPrefix };

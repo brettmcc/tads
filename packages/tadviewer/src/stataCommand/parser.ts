@@ -72,9 +72,10 @@
  * - `by` and `bysort` are synonyms: groups are always formed in sorted
  *   order, so Stata's "not sorted" error for plain `by` cannot arise.
  *   Parenthesized variables (`bysort g (x):`) order observations within
- *   each group and do not define groups. Only commands Stata accepts
- *   under by are allowed (BYABLE_COMMANDS); `keep`/`drop` only in their
- *   `if` form.
+ *   each group and do not define groups. Only BYABLE_COMMANDS are
+ *   allowed. Stata also accepts `by: keep if` / `by: drop if`, but
+ *   without `_n`/`_N` the prefix could not change the result, so it is
+ *   rejected rather than silently ignored.
  * - `=` is accepted as a synonym for `==`, and `~=` for `!=`.
  * - `null` may only appear with `==`/`!=`.
  * - A bare `.` is Stata's numeric missing-value literal and maps to null:
@@ -321,6 +322,12 @@ class Parser {
         first.pos
       );
     }
+    if (by !== undefined && (kind === "keep" || kind === "drop")) {
+      this.error(
+        `${kind} may not be combined with by: without _n/_N the prefix has no effect; use ${kind} if without it`,
+        first.pos
+      );
+    }
     if (by !== undefined && !BYABLE_COMMANDS.has(kind)) {
       this.error(`${kind} may not be combined with by`, first.pos);
     }
@@ -477,12 +484,6 @@ class Parser {
           this.expectNoOptions(kind);
           this.expectEof();
           return { kind, variables: [], filter };
-        }
-        if (by !== undefined) {
-          this.error(
-            `${kind} varlist may not be combined with by; use ${kind} if`,
-            ifTok.pos
-          );
         }
         const variables = this.parseVarlist();
         if (variables.length === 0) {
