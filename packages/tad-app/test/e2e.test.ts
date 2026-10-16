@@ -430,3 +430,23 @@ test("duplicates report renders the copies panel", async () => {
   // c = 1, 2, 3, 3, 5, 5: two singletons and two pairs
   expect(cellTexts).toEqual(["1", "2", "0", "2", "4", "2"]);
 }, 90000);
+
+test("by prefix renders a header and table per group", async () => {
+  await runCommand("bysort c: sum a if a >= 3");
+  const entries = page.locator('[data-testid="result-entry"]');
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll('[data-testid="result-entry"]').length === 8,
+    undefined,
+    { timeout: 30000 }
+  );
+  const lastEntry = entries.last();
+  // like Stata, groups the if clause empties (c = 1, 2) still appear
+  expect(
+    await lastEntry.locator('[data-testid="by-group"]').allTextContents()
+  ).toEqual(["-> c = 1", "-> c = 2", "-> c = 3", "-> c = 5"]);
+  const nCells = await lastEntry
+    .locator("table.command-result-table tbody tr td:nth-child(2)")
+    .allTextContents();
+  expect(nCells).toEqual(["0", "0", "2", "1"]);
+}, 90000);
