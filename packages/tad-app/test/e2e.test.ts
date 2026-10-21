@@ -482,3 +482,62 @@ test("scatter draws its points on a canvas", async () => {
   expect(painted).toHaveLength(1);
   expect(painted[0]).toBeGreaterThan(0);
 }, 90000);
+
+test("About Tads shows the version details and copies them", async () => {
+  // Click the menu item with the native dialog stubbed to record what it
+  // would show and press Copy. This function runs in the main process,
+  // where TypeScript's ES5 helpers don't exist: no async/await or spread.
+  const shown = await app.evaluate(
+    ({ BrowserWindow, Menu, clipboard, dialog }) => {
+      const findItem = (items: any[], label: string): any => {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].label === label) return items[i];
+          const sub = items[i].submenu;
+          const found = sub ? findItem(sub.items, label) : null;
+          if (found) return found;
+        }
+        return null;
+      };
+      const clipboardBefore = clipboard.readText();
+      const showMessageBox = dialog.showMessageBox;
+      return new Promise<any>((resolve) => {
+        (dialog as any).showMessageBox = (...args: any[]) => {
+          const options = args[args.length - 1];
+          // read the clipboard once the click handler has copied
+          setTimeout(() => {
+            dialog.showMessageBox = showMessageBox;
+            const copied = clipboard.readText();
+            clipboard.writeText(clipboardBefore);
+            resolve({
+              hasParent: args.length === 2,
+              message: options.message,
+              detail: options.detail,
+              buttons: options.buttons,
+              copied,
+            });
+          }, 100);
+          return Promise.resolve({ response: 0, checkboxChecked: false });
+        };
+        findItem(Menu.getApplicationMenu()!.items, "About Tads").click(
+          undefined,
+          BrowserWindow.getAllWindows()[0]
+        );
+      });
+    }
+  );
+  const version: string = require("../package.json").version;
+  const electronVersion: string = require("electron/package.json").version;
+  expect(shown.message).toBe(`Tads ${version}`);
+  expect(shown.hasParent).toBe(true);
+  expect(shown.buttons).toEqual(["Copy", "OK"]);
+  const detail: string = shown.detail;
+  expect(detail).toMatch(/^Commit: [0-9a-f]{7,}$/m);
+  expect(detail).toMatch(/^Build date: \d{4}-\d{2}-\d{2}$/m);
+  expect(detail).toContain(`\nElectron: ${electronVersion}\n`);
+  expect(detail).toMatch(/^Chromium: \d+\./m);
+  expect(detail).toMatch(/^Node\.js: \d+\./m);
+  expect(detail).toMatch(/^DuckDB: v\d+\.\d+\.\d+/m);
+  expect(detail).toMatch(/^OS: \S+ \S+ \S+$/m);
+  expect(detail).toMatch(/^Portable mode: no$/m);
+  expect(shown.copied).toBe(`${shown.message}\n${detail}`);
+}, 30000);

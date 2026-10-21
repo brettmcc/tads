@@ -1,4 +1,5 @@
 import * as updater from "./updater";
+import * as about from "./about";
 import * as appWindow from "./appWindow";
 import * as quickStart from "./quickStart";
 import electron, {
@@ -15,10 +16,12 @@ const separatorMenuItem: MenuItemConstructorOptions = {
   type: "separator",
 };
 
-const aboutTadMenuItem = () => {
+const aboutTadMenuItem = (): MenuItemConstructorOptions => {
   return {
     label: "About Tads",
-    role: "about",
+    click: (item: MenuItem, focusedWindow: BrowserWindow | undefined) => {
+      about.showAboutDialog(focusedWindow);
+    },
   };
 };
 
@@ -151,6 +154,10 @@ export const createMenu = () => {
       },
     },
   ];
+  // on macOS, About is in the application menu instead
+  if (!isDarwin) {
+    helpSubmenu.push(separatorMenuItem, aboutTadMenuItem());
+  }
   const template: MenuItemConstructorOptions[] = [
     {
       label: "File",

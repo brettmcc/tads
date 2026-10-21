@@ -36,3 +36,9 @@ export function loadDataProviders(): Promise<void> {
   }
   return providersPromise;
 }
+
+/** Version of the DuckDB library, loading the data providers if needed. */
+export async function duckDbVersion(): Promise<string> {
+  await loadDataProviders();
+  return require("reltab-duckdb").duckDbVersion();
+}

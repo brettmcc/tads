@@ -21,6 +21,7 @@ import {
   DuckDBTimestampTZValue,
   DuckDBTimestampValue,
   DuckDBValue,
+  version,
 } from "@duckdb/node-api";
 import { Row } from "reltab";
 
@@ -39,6 +40,11 @@ export function duckDbThreadCount(): number {
       ? os.availableParallelism()
       : os.cpus().length;
   return Math.max(1, cores - 1);
+}
+
+/** Version of the bundled DuckDB library, e.g. "v1.5.3". */
+export function duckDbVersion(): string {
+  return version();
 }
 
 let storageOptions: Record<string, string> = {};
