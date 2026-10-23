@@ -311,13 +311,11 @@ export class PivotRequester {
     // viewport. The full prefetch window follows right behind: setting the
     // dataView triggers onStateChange, whose viewport check sees the desired
     // range isn't loaded and requests it.
-    const [offset, limit] =
-      viewState.dataView == null
-        ? paging.initialFetchParams(
-            viewState.viewportTop,
-            viewState.viewportBottom
-          )
-        : paging.fetchParams(viewState.viewportTop, viewState.viewportBottom);
+    const [offset, limit] = paging.requestParams(
+      viewState.dataView != null,
+      viewState.viewportTop,
+      viewState.viewportBottom
+    );
     this.pendingOffset = offset;
     this.pendingLimit = limit;
     const seq = ++this.dataRequestSeq;
@@ -464,7 +462,10 @@ export class PivotRequester {
       // the most recently requested range. Comparing the desired range
       // (rather than the bare viewport) means we start fetching as soon as
       // the viewport enters a margin page, while its rows are still loaded.
-      const [desiredOffset, desiredLimit] = paging.fetchParams(
+      // While the first (initial-window) fetch is in flight, the desired range
+      // is that same initial window, so unrelated state changes don't restart it.
+      const [desiredOffset, desiredLimit] = paging.requestParams(
+        viewState.dataView != null,
         viewState.viewportTop,
         viewState.viewportBottom
       );

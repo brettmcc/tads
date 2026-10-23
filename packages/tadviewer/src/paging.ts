@@ -73,6 +73,24 @@ export const initialFetchParams = (
   return [offset, limit];
 };
 /*
+ * offset and limit of the data request for the current viewport: the small
+ * initial window while the view has no data yet, the full prefetch window after.
+ *
+ * PivotRequester must use this both to issue requests and to decide whether
+ * the viewport needs a new one. If the trigger compared against the full window
+ * while the request was still the initial one, every state change during a slow
+ * first fetch (e.g. the 200ms loading timer tick) would fire another initial
+ * fetch that supersedes the one in flight, and a first fetch slower than that
+ * tick (wide tables) would never land.
+ */
+
+export const requestParams = (
+  hasData: boolean,
+  top: number,
+  bottom: number
+): [number, number] =>
+  hasData ? fetchParams(top, bottom) : initialFetchParams(top, bottom);
+/*
  * returns true iff the interval [top,bottom] entirely contained in the specified
  * offset and limit
  */

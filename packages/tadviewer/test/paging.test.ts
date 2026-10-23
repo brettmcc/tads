@@ -60,9 +60,10 @@ describe("prefetch trigger", () => {
     fetchedOffset: number,
     fetchedLimit: number,
     top: number,
-    bottom: number
+    bottom: number,
+    hasData: boolean = true
   ): boolean => {
-    const [dOffset, dLimit] = paging.fetchParams(top, bottom);
+    const [dOffset, dLimit] = paging.requestParams(hasData, top, bottom);
     return !paging.contains(
       fetchedOffset,
       fetchedLimit,
@@ -90,10 +91,19 @@ describe("prefetch trigger", () => {
   test("the small initial fetch is followed by the full prefetch window", () => {
     // what a freshly opened view fetches for its first paint...
     const [initialOffset, initialLimit] = paging.initialFetchParams(0, 50);
-    // ...leaves the prefetch window outstanding, so a fetch fires immediately
+    // ...leaves the prefetch window outstanding, so a fetch fires as soon
+    // as that first page lands
     expect(needsFetch(initialOffset, initialLimit, 0, 50)).toBe(true);
     // and once it lands, nothing further is requested
     const [fullOffset, fullLimit] = paging.fetchParams(0, 50);
     expect(needsFetch(fullOffset, fullLimit, 0, 50)).toBe(false);
+  });
+
+  test("no refetch while the initial fetch is still in flight", () => {
+    // state changes during a slow first fetch (loading timer ticks) must not
+    // restart it: the in-flight initial window is all a data-less view wants
+    const [initialOffset, initialLimit] = paging.initialFetchParams(0, 0);
+    expect(needsFetch(initialOffset, initialLimit, 0, 0, false)).toBe(false);
+    expect(needsFetch(initialOffset, initialLimit, 0, 50, false)).toBe(true);
   });
 });
