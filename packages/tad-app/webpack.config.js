@@ -3,9 +3,29 @@
 var webpack = require("webpack");
 var path = require("path");
 var fs = require("fs");
+var childProcess = require("child_process");
 var nodeExternals = require("webpack-node-externals");
 
 process.traceDeprecation = true;
+
+// short hash of the commit being built, for the About dialog (app/about.ts);
+// "unknown" when building outside a git checkout
+function gitCommit() {
+  try {
+    return childProcess
+      .execSync("git rev-parse --short HEAD", {
+        cwd: __dirname,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+      .toString()
+      .trim();
+  } catch (e) {
+    return "unknown";
+  }
+}
+
+var buildCommit = gitCommit();
+var buildDate = new Date().toISOString().slice(0, 10);
 
 function config(nodeEnv) {
   return {
@@ -78,6 +98,8 @@ function config(nodeEnv) {
       // variables remain readable at runtime in the Electron processes
       new webpack.DefinePlugin({
         "process.env.NODE_ENV": JSON.stringify(nodeEnv),
+        TADS_BUILD_COMMIT: JSON.stringify(buildCommit),
+        TADS_BUILD_DATE: JSON.stringify(buildDate),
       }),
     ],
   };

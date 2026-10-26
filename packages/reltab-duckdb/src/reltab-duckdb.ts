@@ -44,6 +44,7 @@ export {
   queryRows,
   queryRowsWithColumnInfo,
   closeConnection,
+  duckDbVersion,
   setDuckDbStorageDirs,
 } from "./duckdbAdapter";
 
